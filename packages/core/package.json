@@ -1,6 +1,8 @@
 {
   "name": "@alt-javascript/jsgdbc-core",
   "version": "1.0.0",
+  "description": "Core abstract interfaces for jsgdbc triple-store drivers",
+  "keywords": ["triple-store", "rdf", "sparql", "graph-database", "spo", "driver", "abstract", "facade"],
   "type": "module",
   "main": "index.js",
   "exports": {

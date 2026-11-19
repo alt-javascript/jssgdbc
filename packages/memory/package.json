@@ -1,6 +1,8 @@
 {
   "name": "@alt-javascript/jsgdbc-memory",
   "version": "1.0.0",
+  "description": "In-memory triple-store driver for jsgdbc",
+  "keywords": ["triple-store", "rdf", "sparql", "graph-database", "spo", "memory", "in-memory", "driver"],
   "type": "module",
   "main": "index.js",
   "sideEffects": [
