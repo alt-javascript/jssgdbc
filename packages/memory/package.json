@@ -1,0 +1,40 @@
+{
+  "name": "@alt-javascript/jsgdbc-memory",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "sideEffects": [
+    "./MemoryDriver.js"
+  ],
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alt-javascript/jsgdbc",
+    "directory": "packages/memory"
+  },
+  "homepage": "https://github.com/alt-javascript/jsgdbc/tree/main/packages/memory#readme",
+  "scripts": {
+    "test": "mocha --recursive 'test/**/*.spec.js'"
+  },
+  "dependencies": {
+    "@alt-javascript/jsgdbc-core": "*"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0"
+  },
+  "author": "Craig Parravicini",
+  "contributors": [
+    "Claude (Anthropic)"
+  ],
+  "license": "MIT"
+}

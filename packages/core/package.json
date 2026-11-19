@@ -1,0 +1,35 @@
+{
+  "name": "@alt-javascript/jsgdbc-core",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./test/driverCompliance.js": "./test/driverCompliance.js"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alt-javascript/jsgdbc",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/alt-javascript/jsgdbc/tree/main/packages/core#readme",
+  "scripts": {
+    "test": "mocha --recursive 'test/**/*.spec.js'"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0"
+  },
+  "author": "Craig Parravicini",
+  "contributors": [
+    "Claude (Anthropic)"
+  ],
+  "license": "MIT"
+}
