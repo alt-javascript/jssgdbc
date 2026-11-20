@@ -72,7 +72,12 @@ export class FileGraph extends Graph {
     const matches = this._store.filter(t =>
       this._matchesPattern(t, subject, predicate, object)
     );
-    return new Cursor(matches);
+    const denormalized = matches.map(t => ({
+      subject: this._denormalizeTerm(t.subject),
+      predicate: this._denormalizeTerm(t.predicate),
+      object: this._denormalizeTerm(t.object)
+    }));
+    return new Cursor(denormalized);
   }
 
   async _has(subject, predicate, object) {
@@ -107,6 +112,22 @@ export class FileGraph extends Graph {
       return term;
     }
     return `<${term}>`;
+  }
+
+  _denormalizeTerm(term) {
+    if (term === null || term === undefined) {
+      return term;
+    }
+    if (typeof term !== 'string') {
+      return term;
+    }
+    if (term.startsWith('<') && term.endsWith('>')) {
+      return term.slice(1, -1);
+    }
+    if (term.startsWith('"') && term.endsWith('"')) {
+      return term.slice(1, -1);
+    }
+    return term;
   }
 
   _matchesPattern(triple, subject, predicate, object) {
