@@ -1,7 +1,7 @@
 {
   "name": "@alt-javascript/jssgdbc-file",
   "version": "1.0.0",
-  "description": "N-Triples file I/O utilities for jssgdbc",
+  "description": "File-based triple-store driver for jssgdbc — persists triples to N-Triples (.nt) files",
   "keywords": ["triple-store", "rdf", "n-triples", "file", "serialization", "parser"],
   "type": "module",
   "main": "index.js",
