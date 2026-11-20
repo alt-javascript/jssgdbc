@@ -6,3 +6,6 @@ export { Cursor } from '../core/Cursor.js';
 export { UnsupportedOperationError } from '../core/errors.js';
 
 export { SparqlBuilder } from './SparqlBuilder.js';
+export { SparqlDriver, _driver } from './SparqlDriver.js';
+export { SparqlClient } from './SparqlClient.js';
+export { SparqlGraph } from './SparqlGraph.js';
