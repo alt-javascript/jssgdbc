@@ -12,6 +12,7 @@ JSSGDBC provides a uniform async API for triple-store backends. Write your SPO (
 ```javascript
 // Same code, different backends:
 const client = await DriverManager.getClient('jssgdbc:memory:');      // In-memory
+const client = await DriverManager.getClient('jssgdbc:file:/tmp/mytriples');  // File-based
 // const client = await DriverManager.getClient('jssgdbc:sparql:http://endpoint');  // Future
 // const client = await DriverManager.getClient('jssgdbc:neo4j:bolt://localhost');  // Future
 ```
@@ -22,6 +23,7 @@ const client = await DriverManager.getClient('jssgdbc:memory:');      // In-memo
 |---------|---------|
 | [@alt-javascript/jssgdbc-core](./packages/core) | Abstract interfaces for triple-store drivers: `Driver`, `DriverManager`, `Client`, `Graph`, `Cursor` |
 | [@alt-javascript/jssgdbc-memory](./packages/memory) | In-memory triple-store driver implementation |
+| [@alt-javascript/jssgdbc-file](./packages/file) | File-based triple-store driver — persists triples to N-Triples (.nt) files |
 
 ## Quick Start
 
@@ -75,6 +77,7 @@ console.log(count); // 0
 | Scheme | Package | Backend |
 |--------|---------|---------|
 | `jssgdbc:memory:` | @alt-javascript/jssgdbc-memory | In-memory triple store |
+| `jssgdbc:file:<dir>` | @alt-javascript/jssgdbc-file | Local N-Triples file store |
 
 ## Contributing
 
