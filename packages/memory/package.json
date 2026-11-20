@@ -1,7 +1,7 @@
 {
-  "name": "@alt-javascript/jsgdbc-memory",
+  "name": "@alt-javascript/jssgdbc-memory",
   "version": "1.0.0",
-  "description": "In-memory triple-store driver for jsgdbc",
+  "description": "In-memory triple-store driver for jssgdbc",
   "keywords": ["triple-store", "rdf", "sparql", "graph-database", "spo", "memory", "in-memory", "driver"],
   "type": "module",
   "main": "index.js",
@@ -20,15 +20,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/alt-javascript/jsgdbc",
+    "url": "https://github.com/alt-javascript/jssgdbc",
     "directory": "packages/memory"
   },
-  "homepage": "https://github.com/alt-javascript/jsgdbc/tree/main/packages/memory#readme",
+  "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/memory#readme",
   "scripts": {
     "test": "mocha --recursive 'test/**/*.spec.js'"
   },
   "dependencies": {
-    "@alt-javascript/jsgdbc-core": "*"
+    "@alt-javascript/jssgdbc-core": "*"
   },
   "devDependencies": {
     "chai": "^4.3.7",

@@ -1,12 +1,12 @@
-# @alt-javascript/jsgdbc-core
+# @alt-javascript/jssgdbc-core
 
-![npm @alt-javascript/jsgdbc-core](https://img.shields.io/npm/v/%40alt-javascript%2Fjsgdbc-core?style=flat-square)
+![npm @alt-javascript/jssgdbc-core](https://img.shields.io/npm/v/%40alt-javascript%2Fjssgdbc-core?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
 ## Install
 
 ```bash
-npm install @alt-javascript/jsgdbc-core
+npm install @alt-javascript/jssgdbc-core
 ```
 
 ## Interfaces
@@ -23,27 +23,27 @@ npm install @alt-javascript/jsgdbc-core
 
 ## Usage
 
-This package defines abstract interfaces. Concrete drivers are provided by separate packages (e.g., `@alt-javascript/jsgdbc-memory`). To use jsgdbc:
+This package defines abstract interfaces. Concrete drivers are provided by separate packages (e.g., `@alt-javascript/jssgdbc-memory`). To use jssgdbc:
 
 1. Install a driver package alongside this one
 2. Import the driver (which auto-registers itself)
 3. Use `DriverManager.getClient()` to get a client
 
 ```javascript
-import '@alt-javascript/jsgdbc-memory';  // Auto-registers
-import { DriverManager } from '@alt-javascript/jsgdbc-core';
+import '@alt-javascript/jssgdbc-memory';  // Auto-registers
+import { DriverManager } from '@alt-javascript/jssgdbc-core';
 
-const client = await DriverManager.getClient('jsgdbc:memory:');
+const client = await DriverManager.getClient('jssgdbc:memory:');
 const graph = client.getGraph();
 // ... use graph
 ```
 
 ## Compliance Testing
 
-Implement the `Driver` interface and validate it against the jsgdbc compliance harness:
+Implement the `Driver` interface and validate it against the jssgdbc compliance harness:
 
 ```javascript
-import { testDriverCompliance } from '@alt-javascript/jsgdbc-core/test/driverCompliance.js';
+import { testDriverCompliance } from '@alt-javascript/jssgdbc-core/test/driverCompliance.js';
 
 const myDriver = new MyDriver();
 const clientFactory = async (url) => {

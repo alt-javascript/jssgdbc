@@ -1,12 +1,12 @@
-# @alt-javascript/jsgdbc-memory
+# @alt-javascript/jssgdbc-memory
 
-![npm @alt-javascript/jsgdbc-memory](https://img.shields.io/npm/v/%40alt-javascript%2Fjsgdbc-memory?style=flat-square)
+![npm @alt-javascript/jssgdbc-memory](https://img.shields.io/npm/v/%40alt-javascript%2Fjssgdbc-memory?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
 ## Install
 
 ```bash
-npm install @alt-javascript/jsgdbc-memory @alt-javascript/jsgdbc-core
+npm install @alt-javascript/jssgdbc-memory @alt-javascript/jssgdbc-core
 ```
 
 ## Usage
@@ -14,11 +14,11 @@ npm install @alt-javascript/jsgdbc-memory @alt-javascript/jsgdbc-core
 Importing this package auto-registers the in-memory driver. Then use `DriverManager.getClient()` to get a client:
 
 ```javascript
-import '@alt-javascript/jsgdbc-memory';
-import { DriverManager } from '@alt-javascript/jsgdbc-core';
+import '@alt-javascript/jssgdbc-memory';
+import { DriverManager } from '@alt-javascript/jssgdbc-core';
 
 // Get a client for the in-memory triple store
-const client = await DriverManager.getClient('jsgdbc:memory:');
+const client = await DriverManager.getClient('jssgdbc:memory:');
 
 // Get the default graph
 const graph = client.getGraph();
@@ -46,10 +46,10 @@ await graph.remove(
 
 ## URL Scheme
 
-This driver accepts the `jsgdbc:memory:` URL scheme:
+This driver accepts the `jssgdbc:memory:` URL scheme:
 
 ```javascript
-const client = await DriverManager.getClient('jsgdbc:memory:');
+const client = await DriverManager.getClient('jssgdbc:memory:');
 ```
 
 ## API Reference

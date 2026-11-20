@@ -1,7 +1,7 @@
 {
-  "name": "jsgdbc",
+  "name": "jssgdbc",
   "version": "1.0.0",
-  "description": "JavaScript Graph Database Connectivity — a uniform async API for triple stores",
+  "description": "JavaScript Semantic Graph Database Connectivity — a uniform async API for triple stores",
   "keywords": ["triple-store", "rdf", "sparql", "graph-database", "spo", "driver", "facade"],
   "private": true,
   "type": "module",

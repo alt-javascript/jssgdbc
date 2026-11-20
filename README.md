@@ -1,37 +1,37 @@
-# JSGDBC — JavaScript Graph Database Connectivity
+# JSSGDBC — JavaScript Semantic Graph Database Connectivity
 
 ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)
-![npm @alt-javascript/jsgdbc-core](https://img.shields.io/npm/v/%40alt-javascript%2Fjsgdbc-core?style=flat-square)
+![npm @alt-javascript/jssgdbc-core](https://img.shields.io/npm/v/%40alt-javascript%2Fjssgdbc-core?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue?style=flat-square)](https://github.com/alt-javascript/jsgdbc/actions)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue?style=flat-square)](https://github.com/alt-javascript/jssgdbc/actions)
 
-## Why JSGDBC?
+## Why JSSGDBC?
 
-JSGDBC provides a uniform async API for triple-store backends. Write your SPO (Subject-Predicate-Object) code once, and swap backends by changing a URL. Connect to in-memory, file-based, or remote SPARQL/Neo4j instances without rewriting application logic.
+JSSGDBC provides a uniform async API for triple-store backends. Write your SPO (Subject-Predicate-Object) code once, and swap backends by changing a URL. Connect to in-memory, file-based, or remote SPARQL/Neo4j instances without rewriting application logic.
 
 ```javascript
 // Same code, different backends:
-const client = await DriverManager.getClient('jsgdbc:memory:');      // In-memory
-// const client = await DriverManager.getClient('jsgdbc:sparql:http://endpoint');  // Future
-// const client = await DriverManager.getClient('jsgdbc:neo4j:bolt://localhost');  // Future
+const client = await DriverManager.getClient('jssgdbc:memory:');      // In-memory
+// const client = await DriverManager.getClient('jssgdbc:sparql:http://endpoint');  // Future
+// const client = await DriverManager.getClient('jssgdbc:neo4j:bolt://localhost');  // Future
 ```
 
 ## Packages
 
 | Package | Purpose |
 |---------|---------|
-| [@alt-javascript/jsgdbc-core](./packages/core) | Abstract interfaces for triple-store drivers: `Driver`, `DriverManager`, `Client`, `Graph`, `Cursor` |
-| [@alt-javascript/jsgdbc-memory](./packages/memory) | In-memory triple-store driver implementation |
+| [@alt-javascript/jssgdbc-core](./packages/core) | Abstract interfaces for triple-store drivers: `Driver`, `DriverManager`, `Client`, `Graph`, `Cursor` |
+| [@alt-javascript/jssgdbc-memory](./packages/memory) | In-memory triple-store driver implementation |
 
 ## Quick Start
 
 ```javascript
 // Auto-registers the memory driver on import
-import '@alt-javascript/jsgdbc-memory';
-import { DriverManager } from '@alt-javascript/jsgdbc-core';
+import '@alt-javascript/jssgdbc-memory';
+import { DriverManager } from '@alt-javascript/jssgdbc-core';
 
 // Get a client for the in-memory triple store
-const client = await DriverManager.getClient('jsgdbc:memory:');
+const client = await DriverManager.getClient('jssgdbc:memory:');
 
 // Get the default graph (or any named graph)
 const graph = client.getGraph();
@@ -74,7 +74,7 @@ console.log(count); // 0
 
 | Scheme | Package | Backend |
 |--------|---------|---------|
-| `jsgdbc:memory:` | @alt-javascript/jsgdbc-memory | In-memory triple store |
+| `jssgdbc:memory:` | @alt-javascript/jssgdbc-memory | In-memory triple store |
 
 ## Contributing
 

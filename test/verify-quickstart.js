@@ -10,7 +10,7 @@ import { DriverManager } from '../packages/core/index.js';
 
 async function main() {
   // Get a client for the in-memory triple store
-  const client = await DriverManager.getClient('jsgdbc:memory:');
+  const client = await DriverManager.getClient('jssgdbc:memory:');
   assert(client, 'Client should be created');
 
   // Get the default graph (or any named graph)

@@ -26,7 +26,7 @@ describe('DriverManager dispatch', () => {
 
   it('throws Error with "No suitable driver" when no drivers registered', async () => {
     try {
-      await DriverManager.getClient('jsgdbc:nonexistent:', {});
+      await DriverManager.getClient('jssgdbc:nonexistent:', {});
       expect.fail('should have thrown');
     } catch (e) {
       expect(e.message).to.include('No suitable driver');
@@ -37,7 +37,7 @@ describe('DriverManager dispatch', () => {
     let connectCalled = false;
     const mockDriver = {
       acceptsURL(url) {
-        return url === 'jsgdbc:test:';
+        return url === 'jssgdbc:test:';
       },
       async connect(url, properties) {
         connectCalled = true;
@@ -46,7 +46,7 @@ describe('DriverManager dispatch', () => {
     };
 
     DriverManager.registerDriver(mockDriver);
-    const client = await DriverManager.getClient('jsgdbc:test:', {});
+    const client = await DriverManager.getClient('jssgdbc:test:', {});
 
     expect(connectCalled).to.be.true;
     expect(client).to.be.instanceof(Client);
@@ -64,7 +64,7 @@ describe('DriverManager dispatch', () => {
     const driver2 = {
       acceptsURL(url) {
         callOrder.push('driver2');
-        return url === 'jsgdbc:match:';
+        return url === 'jssgdbc:match:';
       },
       async connect(url, properties) {
         return new Client(this, url, properties);
@@ -73,7 +73,7 @@ describe('DriverManager dispatch', () => {
 
     DriverManager.registerDriver(driver1);
     DriverManager.registerDriver(driver2);
-    await DriverManager.getClient('jsgdbc:match:', {});
+    await DriverManager.getClient('jssgdbc:match:', {});
 
     expect(callOrder).to.deep.equal(['driver1', 'driver2']);
   });
@@ -323,21 +323,21 @@ describe('Graph abstract stubs', () => {
 describe('Client closed guard', () => {
   it('getUrl() returns URL passed to constructor', () => {
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new Client(mockDriver, 'jsgdbc:test:', { prop: 'value' });
+    const client = new Client(mockDriver, 'jssgdbc:test:', { prop: 'value' });
 
-    expect(client.getUrl()).to.equal('jsgdbc:test:');
+    expect(client.getUrl()).to.equal('jssgdbc:test:');
   });
 
   it('isClosed() returns false before close()', () => {
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new Client(mockDriver, 'jsgdbc:test:', {});
+    const client = new Client(mockDriver, 'jssgdbc:test:', {});
 
     expect(client.isClosed()).to.be.false;
   });
 
   it('close() sets isClosed() to true', () => {
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new Client(mockDriver, 'jsgdbc:test:', {});
+    const client = new Client(mockDriver, 'jssgdbc:test:', {});
 
     client.close();
     expect(client.isClosed()).to.be.true;
@@ -345,7 +345,7 @@ describe('Client closed guard', () => {
 
   it('getGraph() after close() throws', () => {
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new Client(mockDriver, 'jsgdbc:test:', {});
+    const client = new Client(mockDriver, 'jssgdbc:test:', {});
 
     client.close();
 
@@ -366,7 +366,7 @@ describe('Client closed guard', () => {
     }
 
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new TestClient(mockDriver, 'jsgdbc:test:', {});
+    const client = new TestClient(mockDriver, 'jssgdbc:test:', {});
 
     const graph1 = client.getGraph('test');
     const graph2 = client.getGraph('test');
@@ -382,7 +382,7 @@ describe('Client closed guard', () => {
     }
 
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new TestClient(mockDriver, 'jsgdbc:test:', {});
+    const client = new TestClient(mockDriver, 'jssgdbc:test:', {});
 
     const graph1 = client.getGraph('graph1');
     const graph2 = client.getGraph('graph2');
@@ -398,7 +398,7 @@ describe('Client closed guard', () => {
     }
 
     const mockDriver = { acceptsURL() { }, async connect() { } };
-    const client = new TestClient(mockDriver, 'jsgdbc:test:', {});
+    const client = new TestClient(mockDriver, 'jssgdbc:test:', {});
 
     const graph = client.getGraph();
     expect(graph).to.be.instanceof(Graph);
@@ -411,12 +411,12 @@ describe('ClientDataSource', () => {
   });
 
   it('constructs with URL and properties', () => {
-    const ds = new ClientDataSource('jsgdbc:test:', { prop: 'value' });
+    const ds = new ClientDataSource('jssgdbc:test:', { prop: 'value' });
     expect(ds).to.be.instanceof(ClientDataSource);
   });
 
   it('getClient() throws no suitable driver when no drivers registered', async () => {
-    const ds = new ClientDataSource('jsgdbc:test:', {});
+    const ds = new ClientDataSource('jssgdbc:test:', {});
 
     try {
       await ds.getClient();
@@ -429,7 +429,7 @@ describe('ClientDataSource', () => {
   it('getClient() delegates to DriverManager', async () => {
     const mockDriver = {
       acceptsURL(url) {
-        return url === 'jsgdbc:test:';
+        return url === 'jssgdbc:test:';
       },
       async connect(url, properties) {
         return new Client(this, url, properties);
@@ -437,10 +437,10 @@ describe('ClientDataSource', () => {
     };
 
     DriverManager.registerDriver(mockDriver);
-    const ds = new ClientDataSource('jsgdbc:test:', { prop: 'value' });
+    const ds = new ClientDataSource('jssgdbc:test:', { prop: 'value' });
     const client = await ds.getClient();
 
     expect(client).to.be.instanceof(Client);
-    expect(client.getUrl()).to.equal('jsgdbc:test:');
+    expect(client.getUrl()).to.equal('jssgdbc:test:');
   });
 });

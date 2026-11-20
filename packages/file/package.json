@@ -1,0 +1,39 @@
+{
+  "name": "@alt-javascript/jssgdbc-file",
+  "version": "1.0.0",
+  "description": "N-Triples file I/O utilities for jssgdbc",
+  "keywords": ["triple-store", "rdf", "n-triples", "file", "serialization", "parser"],
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alt-javascript/jssgdbc",
+    "directory": "packages/file"
+  },
+  "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/file#readme",
+  "scripts": {
+    "test": "mocha --recursive 'test/**/*.spec.js'"
+  },
+  "dependencies": {
+    "@alt-javascript/jssgdbc-core": "*"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0"
+  },
+  "author": "Craig Parravicini",
+  "contributors": [
+    "Claude (Anthropic)"
+  ],
+  "license": "MIT"
+}

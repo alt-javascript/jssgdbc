@@ -3,7 +3,7 @@ import { Client } from '../Client.js';
 import { Graph } from '../Graph.js';
 
 /**
- * Shared compliance test generator for jsgdbc drivers.
+ * Shared compliance test generator for jssgdbc drivers.
  *
  * This skeleton provides the structure for driver compliance testing.
  * Drivers implement their own tests by calling driverComplianceTests()
@@ -128,7 +128,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('resolves driver URL scheme correctly', async function() {
         const client = await clientFactory();
         expect(client).to.be.instanceof(Client);
-        expect(client.getUrl()).to.match(/^jsgdbc:/);
+        expect(client.getUrl()).to.match(/^jssgdbc:/);
         client.close();
       });
     });
