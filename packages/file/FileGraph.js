@@ -34,14 +34,18 @@ export class FileGraph extends Graph {
 
   async _add(subject, predicate, object) {
     await this._ensureLoaded();
-    const triple = { subject, predicate, object };
+    const normalized = {
+      subject: this._normalizeTerm(subject),
+      predicate: this._normalizeTerm(predicate),
+      object: this._normalizeTerm(object)
+    };
     const exists = this._store.some(t =>
-      t.subject === subject &&
-      t.predicate === predicate &&
-      t.object === object
+      t.subject === normalized.subject &&
+      t.predicate === normalized.predicate &&
+      t.object === normalized.object
     );
     if (!exists) {
-      this._store.push(triple);
+      this._store.push(normalized);
       await this._flush();
     }
     return undefined;
@@ -92,10 +96,26 @@ export class FileGraph extends Graph {
     return undefined;
   }
 
+  _normalizeTerm(term) {
+    if (term === null || term === undefined) {
+      return term;
+    }
+    if (typeof term !== 'string') {
+      return term;
+    }
+    if (term.startsWith('<') || term.startsWith('_:') || term.startsWith('"')) {
+      return term;
+    }
+    return `<${term}>`;
+  }
+
   _matchesPattern(triple, subject, predicate, object) {
-    return (subject === null || subject === undefined || triple.subject === subject) &&
-           (predicate === null || predicate === undefined || triple.predicate === predicate) &&
-           (object === null || object === undefined || triple.object === object);
+    const normalizedSubject = this._normalizeTerm(subject);
+    const normalizedPredicate = this._normalizeTerm(predicate);
+    const normalizedObject = this._normalizeTerm(object);
+    return (normalizedSubject === null || normalizedSubject === undefined || triple.subject === normalizedSubject) &&
+           (normalizedPredicate === null || normalizedPredicate === undefined || triple.predicate === normalizedPredicate) &&
+           (normalizedObject === null || normalizedObject === undefined || triple.object === normalizedObject);
   }
 
   async _flush() {
