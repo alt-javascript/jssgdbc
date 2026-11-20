@@ -27,6 +27,10 @@ export class SparqlBuilder {
   }
 
   static buildInsertData(graphName, subject, predicate, object) {
+    if ([subject, predicate, object].some((term) => term === null || term === undefined)) {
+      throw new TypeError('INSERT DATA requires bound subject, predicate, and object');
+    }
+
     const s = this.formatTerm(subject, 'subject');
     const p = this.formatTerm(predicate, 'predicate');
     const o = this.formatTerm(object, 'object');
