@@ -1,0 +1,40 @@
+{
+  "name": "@alt-javascript/jssgdbc-sparql",
+  "version": "1.0.0",
+  "description": "SPARQL query and update builder for jssgdbc — translates triple patterns into SPARQL 1.1 strings",
+  "keywords": ["sparql", "query-builder", "rdf", "triple-store", "endpoint"],
+  "type": "module",
+  "main": "index.js",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alt-javascript/jssgdbc",
+    "directory": "packages/sparql"
+  },
+  "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/sparql#readme",
+  "scripts": {
+    "test": "mocha --recursive 'test/**/*.spec.js'"
+  },
+  "dependencies": {
+    "@alt-javascript/jssgdbc-core": "*"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0"
+  },
+  "author": "Craig Parravicini",
+  "contributors": [
+    "Claude (Anthropic)"
+  ],
+  "license": "MIT"
+}
