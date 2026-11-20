@@ -5,6 +5,9 @@
   "keywords": ["triple-store", "rdf", "n-triples", "file", "serialization", "parser"],
   "type": "module",
   "main": "index.js",
+  "sideEffects": [
+    "./FileDriver.js"
+  ],
   "exports": {
     ".": {
       "import": "./index.js",

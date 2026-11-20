@@ -7,3 +7,8 @@ export { UnsupportedOperationError } from '../core/errors.js';
 
 export { NTriplesParser } from './NTriplesParser.js';
 export { NTriplesSerializer } from './NTriplesSerializer.js';
+
+export { FileDriver } from './FileDriver.js';
+export { FileClient } from './FileClient.js';
+export { FileGraph } from './FileGraph.js';
+export { _driver } from './FileDriver.js';
