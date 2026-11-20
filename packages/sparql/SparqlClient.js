@@ -1,4 +1,5 @@
 import { Client } from '@alt-javascript/jssgdbc-core';
+import { SparqlGraph } from './SparqlGraph.js';
 
 const URL_PREFIX = 'jssgdbc:sparql:';
 
@@ -26,6 +27,10 @@ export class SparqlClient extends Client {
     } catch {
       throw new Error('Invalid SPARQL headers');
     }
+  }
+
+  _getGraph(name) {
+    return new SparqlGraph(this, name);
   }
 
   async _query(text) {
