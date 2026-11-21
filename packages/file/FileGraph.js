@@ -1,5 +1,3 @@
-import fs from 'fs/promises';
-import path from 'path';
 import { Graph } from '../core/Graph.js';
 import { normalizeTerm } from '../core/StringTerm.js';
 import { Cursor } from '../core/Cursor.js';
@@ -7,11 +5,21 @@ import { NTriplesParser } from './NTriplesParser.js';
 import { NTriplesSerializer } from './NTriplesSerializer.js';
 
 export class FileGraph extends Graph {
-  constructor(client, name, filePath) {
+  constructor(client, name, storage) {
     super(client, name);
-    this._filePath = filePath;
+    this._storage = storage;
     this._store = [];
     this._loaded = false;
+    this._tail = Promise.resolve();
+  }
+
+  // Register queued work with core admission/draining, not only running I/O.
+  _runOperation(operation) {
+    return super._runOperation(() => {
+      const pending = this._tail.then(operation);
+      this._tail = pending.then(() => {}, () => {});
+      return pending;
+    });
   }
 
   async _ensureLoaded() {
@@ -19,18 +27,10 @@ export class FileGraph extends Graph {
       return;
     }
 
-    try {
-      const text = await fs.readFile(this._filePath, 'utf-8');
-      this._store = NTriplesParser.parse(text).map(triple => Object.fromEntries(
-        Object.entries(triple).map(([position, term]) => [position, this._normalizeTerm(normalizeTerm(term, position))])
-      ));
-    } catch (err) {
-      if (err.code === 'ENOENT') {
-        this._store = [];
-      } else {
-        throw err;
-      }
-    }
+    const text = await this._storage.read(this._name);
+    this._store = NTriplesParser.parse(text).map(triple => Object.fromEntries(
+      Object.entries(triple).map(([position, term]) => [position, this._normalizeTerm(normalizeTerm(term, position))])
+    ));
 
     this._loaded = true;
   }
@@ -48,25 +48,15 @@ export class FileGraph extends Graph {
       t.object === normalized.object
     );
     if (!exists) {
-      this._store.push(normalized);
-      await this._flush();
+      await this._flush([...this._store, normalized]);
     }
     return undefined;
   }
 
   async _remove(subject, predicate, object) {
     await this._ensureLoaded();
-    let removed = false;
-    for (let i = this._store.length - 1; i >= 0; i--) {
-      const t = this._store[i];
-      if (this._matchesPattern(t, subject, predicate, object)) {
-        this._store.splice(i, 1);
-        removed = true;
-      }
-    }
-    if (removed) {
-      await this._flush();
-    }
+    const next = this._store.filter(t => !this._matchesPattern(t, subject, predicate, object));
+    if (next.length !== this._store.length) await this._flush(next);
     return undefined;
   }
 
@@ -99,8 +89,7 @@ export class FileGraph extends Graph {
 
   async _clear() {
     await this._ensureLoaded();
-    this._store.length = 0;
-    await this._flush();
+    await this._flush([]);
     return undefined;
   }
 
@@ -139,10 +128,9 @@ export class FileGraph extends Graph {
            (normalizedObject === null || normalizedObject === undefined || triple.object === normalizedObject);
   }
 
-  async _flush() {
-    const text = NTriplesSerializer.serialize(this._store);
-    const dir = path.dirname(this._filePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this._filePath, text, 'utf-8');
+  async _flush(next) {
+    const text = NTriplesSerializer.serialize(next);
+    await this._storage.write(this._name, text);
+    this._store = next;
   }
 }

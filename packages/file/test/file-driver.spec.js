@@ -23,7 +23,7 @@ afterEach(async () => {
 
 // Create a clientFactory that follows the FileDriver pattern
 async function clientFactory() {
-  const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+  const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
   tempDirs.push(tmpDir);
   DriverManager.clear();
   const driver = new FileDriver();
@@ -37,7 +37,7 @@ driverComplianceTests('FileDriver Compliance', clientFactory);
 // Group 2: File persistence tests
 describe('FileDriver Persistence', () => {
   it('persists triples to .nt file on disk', async () => {
-    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+    const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
     tempDirs.push(tmpDir);
     DriverManager.clear();
     const driver = new FileDriver();
@@ -48,8 +48,8 @@ describe('FileDriver Persistence', () => {
     await graph.add('<http://example.com/s1>', '<http://example.com/p1>', '<http://example.com/o1>');
     await graph.add('<http://example.com/s2>', '<http://example.com/p2>', '"object2"');
 
-    // Check that the default.nt file exists and has content
-    const filePath = path.join(tmpDir, 'default.nt');
+    // Check that the keyed graph.nt payload exists and has content
+    const filePath = path.join(tmpDir, client._storage.key(''), 'graph.nt');
     const fileExists = fsSync.existsSync(filePath);
     expect(fileExists).to.be.true;
 
@@ -58,11 +58,11 @@ describe('FileDriver Persistence', () => {
     expect(content).to.include('<http://example.com/p1>');
     expect(content).to.include('<http://example.com/o1>');
 
-    client.close();
+    await client.close();
   });
 
   it('reloads triples from file on new client session', async () => {
-    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+    const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
     tempDirs.push(tmpDir);
     DriverManager.clear();
     const driver = new FileDriver();
@@ -73,7 +73,7 @@ describe('FileDriver Persistence', () => {
     const graph1 = client1.getGraph();
     await graph1.add('<http://example.com/s1>', '<http://example.com/p1>', '<http://example.com/o1>');
     await graph1.add('<http://example.com/s2>', '<http://example.com/p2>', '<http://example.com/o2>');
-    client1.close();
+    await client1.close();
 
     // Second session: verify triples are reloaded
     DriverManager.clear();
@@ -92,11 +92,11 @@ describe('FileDriver Persistence', () => {
     const found1 = await cursor2.next();
     expect(found1).to.be.true;
 
-    client2.close();
+    await client2.close();
   });
 
   it('named graphs use separate .nt files', async () => {
-    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+    const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
     tempDirs.push(tmpDir);
     DriverManager.clear();
     const driver = new FileDriver();
@@ -110,8 +110,8 @@ describe('FileDriver Persistence', () => {
     await graphB.add('<http://example.com/s2>', '<http://example.com/p2>', '<http://example.com/o2>');
 
     // Check that both files exist
-    const fileAExists = fsSync.existsSync(path.join(tmpDir, 'a.nt'));
-    const fileBExists = fsSync.existsSync(path.join(tmpDir, 'b.nt'));
+    const fileAExists = fsSync.existsSync(path.join(tmpDir, client._storage.key('a'), 'graph.nt'));
+    const fileBExists = fsSync.existsSync(path.join(tmpDir, client._storage.key('b'), 'graph.nt'));
     expect(fileAExists).to.be.true;
     expect(fileBExists).to.be.true;
 
@@ -124,11 +124,11 @@ describe('FileDriver Persistence', () => {
     const foundInB = await cursorB.next();
     expect(foundInB).to.be.false;
 
-    client.close();
+    await client.close();
   });
 
   it('handles non-existent file gracefully', async () => {
-    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+    const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
     tempDirs.push(tmpDir);
     DriverManager.clear();
     const driver = new FileDriver();
@@ -142,11 +142,11 @@ describe('FileDriver Persistence', () => {
     const found = await cursor.next();
     expect(found).to.be.false;
 
-    client.close();
+    await client.close();
   });
 
   it('clear removes all triples and writes empty file', async () => {
-    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+    const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
     tempDirs.push(tmpDir);
     DriverManager.clear();
     const driver = new FileDriver();
@@ -161,7 +161,7 @@ describe('FileDriver Persistence', () => {
     await graph.clear();
 
     // Verify file is empty (or contains only whitespace)
-    const filePath = path.join(tmpDir, 'default.nt');
+    const filePath = path.join(tmpDir, client._storage.key(''), 'graph.nt');
     const content = await fs.readFile(filePath, 'utf-8');
     expect(content.trim()).to.equal('');
 
@@ -170,11 +170,11 @@ describe('FileDriver Persistence', () => {
     const found = await cursor.next();
     expect(found).to.be.false;
 
-    client.close();
+    await client.close();
   });
 
   it('remove persists deletion to disk', async () => {
-    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'jssgdbc-file-'));
+    const tmpDir = fsSync.mkdtempSync(path.join(fsSync.realpathSync(os.tmpdir()), 'jssgdbc-file-'));
     tempDirs.push(tmpDir);
     DriverManager.clear();
     const driver = new FileDriver();
@@ -188,7 +188,7 @@ describe('FileDriver Persistence', () => {
 
     // Remove one triple
     await graph1.remove('<http://example.com/s1>', '<http://example.com/p1>', '<http://example.com/o1>');
-    client1.close();
+    await client1.close();
 
     // Second session: verify only one triple remains
     DriverManager.clear();
@@ -207,6 +207,6 @@ describe('FileDriver Persistence', () => {
     const found = await cursor2.next();
     expect(found).to.be.true;
 
-    client2.close();
+    await client2.close();
   });
 });

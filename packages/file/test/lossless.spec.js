@@ -8,7 +8,7 @@ import { NTriplesSerializer as S } from '../NTriplesSerializer.js';
 
 describe('Public file graph round trips', () => {
   it('rejects invalid input before I/O and propagates malformed-file/read/write failures', async () => {
-    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jssgdbc-failure-'));
+    const directory = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'jssgdbc-failure-'));
     const drivers = DriverManager.getDrivers();
     let client;
     try {
@@ -18,20 +18,22 @@ describe('Public file graph round trips', () => {
       client = await DriverManager.getClient(url);
       await assert.rejects(client.getGraph().add('urn:s', 'urn:p', 'bare'), /object/);
       assert.deepEqual(await fs.readdir(directory), []);
-      const file = path.join(directory, 'default.nt');
+      await client.getGraph().count(); // Reserve the exact identity before corrupting its payload.
+      await client.getGraph().close();
+      const file = path.join(directory, client._storage.key(''), 'graph.nt');
       await fs.writeFile(file, '<urn:s> <urn:p> "unfinished .');
       await assert.rejects(client.getGraph().count(), /line/i);
       await client.close();
       await fs.rm(file);
       await fs.mkdir(file);
       client = await DriverManager.getClient(url);
-      await assert.rejects(client.getGraph().count(), { code: 'EISDIR' });
+      await assert.rejects(client.getGraph().count(), /File storage/);
       await client.close();
       await fs.rm(file, { recursive: true });
       client = await DriverManager.getClient(url);
       assert.equal(await client.getGraph().count(), 0);
       await fs.mkdir(file);
-      await assert.rejects(client.getGraph().add('urn:s', 'urn:p', '"value"'), { code: 'EISDIR' });
+      await assert.rejects(client.getGraph().add('urn:s', 'urn:p', '"value"'), /File storage/);
     } finally {
       await client?.close();
       DriverManager.clear();
@@ -41,7 +43,7 @@ describe('Public file graph round trips', () => {
   });
 
   it('preserves distinct term identities and lexical content after close/reopen', async () => {
-    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jssgdbc-terms-'));
+    const directory = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'jssgdbc-terms-'));
     const drivers = DriverManager.getDrivers();
     const objects = ['urn:o', '"urn:o"', '"mail@example.org^^type"', String.raw`"quote \" slash \\ 雪😀\n\t"`,
       '"001"^^<http://www.w3.org/2001/XMLSchema#integer>', '"bonjour"@fr-ca', '"text"', '_:local'];
