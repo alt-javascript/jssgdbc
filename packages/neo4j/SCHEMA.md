@@ -138,8 +138,9 @@ Do not use `_jssgdbcLock` for application data or bypass this protocol for write
 Self-loops reuse the same term; opposite-endpoint inserts may deadlock as they
 acquire object locks, and the native managed transaction retries the entire
 lock-plus-add callback for retryable failures. Exhausted retries fail safely.
-Offline tests assert sequencing and retry-safe callbacks; T03 must prove real
-concurrent set semantics. Existing duplicate relationships are not repaired.
+Offline tests assert sequencing and retry-safe callbacks; the live integration
+suite verifies bounded cross-client concurrent set semantics on the pinned fixture.
+Existing duplicate relationships are not repaired.
 
 ## Pattern operations and result aliases
 
@@ -174,8 +175,8 @@ The final clause is fixed by method:
 The graph requires one native Neo4j Integer count, checks `inSafeRange()` before
 `toNumber()`, and rejects negative, unsafe or malformed values without echoing
 them. Zero and Number.MAX_SAFE_INTEGER are supported. Aggregations have no
-grouping keys so the contract includes a row for zero matches; real execution
-verification remains T03.
+grouping keys so the contract includes a row for zero matches; the live integration
+suite verifies empty and nonempty aggregates.
 
 For example, `CypherBuilder.buildFind('named', null, 'urn:p', '"hello"@en')`
 returns:
@@ -200,9 +201,10 @@ node cleanup is outside this contract.
 
 Offline tests assert generated strings/parameters, lock sequencing, buffered
 decoding, connection/cleanup failures and API lifecycle, not executed Cypher.
-T03 must verify real Neo4j parsing/execution and concurrent inserts. Node uniqueness
-alone is not a relationship uniqueness guarantee. No live Neo4j proof is claimed
-here, and streaming is not supported.
+The live integration suite verifies real Neo4j parsing/execution and bounded
+concurrent inserts on the pinned fixture, as recorded below. Node uniqueness
+alone is not a relationship uniqueness guarantee. This proof does not cover
+arbitrary workloads or server versions, and streaming is not supported.
 
 Building performs fixed prefix checks and allocates a bounded number of objects;
 text handling and transport serialization are at most linear in input size.
@@ -219,12 +221,15 @@ Orphan nodes accumulate on remove/clear; storage reclamation is not implemented.
 From the repository root, with Docker running:
 
 ```sh
-docker compose -f packages/neo4j/compose.test.yml up -d --wait --wait-timeout 240
 npm run test:integration --workspace=packages/neo4j
-docker compose -f packages/neo4j/compose.test.yml down --volumes
 ```
 
-Always run teardown, including after test or readiness failure. The pinned
+The command creates a uniquely named Compose project, waits for readiness, runs
+the live tests, and awaits teardown in `finally`, including after startup or test
+failure. Startup, test execution and teardown have subprocess timeouts; any failure
+returns nonzero. Docker and Compose must be installed and running, and port 17687
+must be free. Concurrent fixture runs on this fixed port are not supported; a port
+conflict fails without removing another run's project. The pinned
 `neo4j:5.26.0-community` fixture exposes only Bolt on `127.0.0.1:17687`;
 HTTP is not published. Data and logs use ephemeral tmpfs, not production volumes.
 Authentication is disabled **only for this disposable local fixture**. Do not
@@ -235,8 +240,8 @@ The suite intentionally has no remote URL override: it uses
 Run on a trusted local machine; any local process can access this fixture.
 
 Compose waits for a successful `cypher-shell RETURN 1` health check. Pull/startup
-or readiness failure is a failure, not a skip. The integration command also fails
-when the service is absent. It prints the actual server version from
+or readiness failure is a failure, not a skip. The command starts the service when
+absent instead of relying on a previously started fixture. It prints the actual server version from
 `dbms.components()` only after a successful connection. Named tests cover CRUD,
 all eight wildcard masks, exact string round trips, independent-client duplicate
 inserts (including blank nodes and self-loops), opposite endpoints, constraints,
