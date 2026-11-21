@@ -1,4 +1,5 @@
 import { Client } from '@alt-javascript/jssgdbc-core';
+import { Neo4jGraph } from './Neo4jGraph.js';
 
 // Never retain native errors: their messages/causes may contain credentials or data.
 export function transportError(operation, error) {
@@ -18,6 +19,17 @@ export class Neo4jClient extends Client {
     this._database = options.database;
     this._timeoutMs = options.timeoutMs;
     this._closePromise = null;
+  }
+
+  getGraph(name = '') {
+    this._checkClosed();
+    name ??= '';
+    if (typeof name !== 'string') throw new TypeError('Neo4j graph name must be a string');
+    return super.getGraph(name);
+  }
+
+  _getGraph(name) {
+    return new Neo4jGraph(this, name);
   }
 
   async _initialize() {

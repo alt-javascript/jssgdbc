@@ -1,11 +1,11 @@
 {
   "name": "@alt-javascript/jssgdbc-neo4j",
   "version": "1.0.0",
-  "description": "Parameterized SPO-to-Cypher builder for jssgdbc",
+  "description": "Neo4j graph driver and parameterized SPO-to-Cypher builder for jssgdbc",
   "keywords": ["neo4j", "cypher", "query-builder", "rdf", "triple-store"],
   "type": "module",
   "main": "index.js",
-  "sideEffects": false,
+  "sideEffects": ["./index.js"],
   "exports": {
     ".": {
       "import": "./index.js",
@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/neo4j",
   "scripts": {
-    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js"
+    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js test/neo4j-graph.test.js"
   },
   "dependencies": {
     "@alt-javascript/jssgdbc-core": "*",

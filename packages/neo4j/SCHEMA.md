@@ -1,8 +1,10 @@
-# Cypher statement contract
+# Neo4j runtime and Cypher statement contract
 
-This package exports the dependency-free `CypherBuilder`. It builds statements;
-no connection, driver registration, filesystem access or database execution occurs.
-All public methods are static and return fresh `{query, params}` objects:
+The package exports `Neo4jDriver`, `Neo4jClient`, `Neo4jGraph`, `CypherBuilder`
+and the core API. Importing the package registers a singleton driver with
+`DriverManager`; connection occurs only on `DriverManager.getClient(...)`.
+The builder itself performs no I/O. Its static methods return fresh
+`{query, params}` objects:
 
 - `buildAdd(graphName, subject, predicate, object)`
 - `buildFind(graphName, subject, predicate, object)`
@@ -11,10 +13,9 @@ All public methods are static and return fresh `{query, params}` objects:
 - `buildRemove(graphName, subject, predicate, object)`
 - `buildClear(graphName)`
 
-## Transport contract (S02/T01)
+## Transport contract
 
-The internal `Neo4jDriver`/`Neo4jClient` transport is implemented; public graph
-composition and registration follow in T02. Connect accepts
+The public `Neo4jDriver`/`Neo4jClient` transport accepts
 `jssgdbc:neo4j:<native-uri>` with `bolt`, `bolt+s`, `bolt+ssc`, `neo4j`,
 `neo4j+s`, or `neo4j+ssc`. Embedded userinfo, fragments and non-root paths
 are rejected. Credentials belong only in properties, never in the URL.
@@ -50,7 +51,18 @@ on repeated calls, including when cleanup rejects. Await it. Errors expose only
 operation and a recognized-format native driver code; native messages, causes,
 credentials and parameters are not retained in the exposed error. No query or
 credential logging is configured. Run `npm test --workspace=packages/neo4j` for
-offline transport and mapper diagnostics. Live service proof remains T03.
+offline transport, graph decoding/lifecycle and mapper diagnostics. Live service
+proof and fixture readiness/startup/teardown commands remain T03; no live service
+or concurrency result is claimed by these offline tests.
+
+`client.getGraph(null)`, `getGraph(undefined)` and `getGraph('')` share the same
+cached default graph. Graph handles reject operations after graph or client close,
+including handles retained before client close. Mutations resolve to `undefined`.
+`find` returns a core `Cursor` of exact string triples, fully independent of the
+closed session and subsequently closed client. Cursor close only releases its API
+usability; it does not control server resources. Find aliases/types are validated;
+`has` requires exactly one boolean `exists` row. Decode errors identify the
+operation as `Neo4j <operation>: invalid result` and exclude row contents.
 
 ## Term and triple identity
 
@@ -95,7 +107,7 @@ For `CypherBuilder.buildAdd(null, '_:s', 'urn:p', '"hello"@en')`, params are:
 }
 ```
 
-Pass query and params separately to the eventual transport; never interpolate
+The graph passes query and params separately to transport; it never interpolates
 params back into query text. The result has no return-row contract for mutations.
 Calls do not mutate inputs or share mutable parameter objects.
 
@@ -104,6 +116,30 @@ strings), literal subjects and blank/literal predicates throw synchronous
 `TypeError`s. Messages identify the operation, role and one-based argument
 position without echoing input, e.g. `buildAdd: subject (argument 2) must be a string`.
 Values are never coerced. Empty strings are concrete values, not missing terms.
+
+### Transactional insertion lock
+
+Before running the builder's add statement, `Neo4jGraph` executes this fixed
+statement in the **same managed write transaction**:
+
+```cypher
+MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})
+SET s._jssgdbcLock = true
+REMOVE s._jssgdbcLock
+```
+
+The composite uniqueness constraint provides one graph-scoped subject. Writing
+its reserved temporary `_jssgdbcLock` property acquires a database-side node write
+lock held until transaction end, even after the property is removed. The next
+statement performs relationship MERGE only after that lock is acquired, serializing
+identical-subject inserts across clients. No process-local mutex is used. This
+metadata does not alter `(graph, kind, value)` identity or remain after commit.
+Do not use `_jssgdbcLock` for application data or bypass this protocol for writes.
+Self-loops reuse the same term; opposite-endpoint inserts may deadlock as they
+acquire object locks, and the native managed transaction retries the entire
+lock-plus-add callback for retryable failures. Exhausted retries fail safely.
+Offline tests assert sequencing and retry-safe callbacks; T03 must prove real
+concurrent set semantics. Existing duplicate relationships are not repaired.
 
 ## Pattern operations and result aliases
 
@@ -135,9 +171,11 @@ The final clause is fixed by method:
 | `buildRemove` | `DELETE r` | No return-row contract |
 | `buildClear` | `DELETE r` | Same statement as fully wildcard remove |
 
-Neo4j integer conversion of `count` belongs to the S02 adapter. Aggregations have
-no grouping keys so the intended contract includes a row for zero matches; this
-still needs live execution verification in S02.
+The graph requires one native Neo4j Integer count, checks `inSafeRange()` before
+`toNumber()`, and rejects negative, unsafe or malformed values without echoing
+them. Zero and Number.MAX_SAFE_INTEGER are supported. Aggregations have no
+grouping keys so the contract includes a row for zero matches; real execution
+verification remains T03.
 
 For example, `CypherBuilder.buildFind('named', null, 'urn:p', '"hello"@en')`
 returns:
@@ -160,22 +198,26 @@ node cleanup is outside this contract.
 
 ## Limits of this proof
 
-MERGE expresses sequential set semantics on a valid, non-duplicated store. These
-contract tests assert generated strings and parameters, not executed Cypher.
-S02 must verify real Neo4j parsing/execution, transactional and concurrent inserts
-with appropriate constraints/locking, result decoding, streaming, and connection,
-timeout and server errors. Node uniqueness alone must not be assumed to prove
-concurrent relationship uniqueness. No live Neo4j proof is claimed here.
+Offline tests assert generated strings/parameters, lock sequencing, buffered
+decoding, connection/cleanup failures and API lifecycle, not executed Cypher.
+T03 must verify real Neo4j parsing/execution and concurrent inserts. Node uniqueness
+alone is not a relationship uniqueness guarantee. No live Neo4j proof is claimed
+here, and streaming is not supported.
 
 Building performs fixed prefix checks and allocates a bounded number of objects;
-text handling is at most linear in input size (serialization by a future transport
-is linear). There is no I/O, graph scan, cache, batch accumulation or interpolation.
+text handling and transport serialization are at most linear in input size.
+The builder has no I/O, graph scan, cache, batch accumulation or interpolation.
 At 10x caller volume, allocation/GC and retained parameter payloads are the local
-resource concern; no artificial term-size limit is imposed. Runtime query cost,
-unbounded result streams and backpressure are adapter concerns.
+resource concern; no artificial term-size limit is imposed. Runtime broad queries
+buffer all matching rows; there is no pagination or backpressure. At 10x write
+concurrency, hot-subject lock contention or connection pool acquisition can become
+the first bottleneck. Timeouts/retry budgets bound individual waits, not memory.
+Orphan nodes accumulate on remove/clear; storage reclamation is not implemented.
 
 ## Diagnostics
 
 Inspect `{query, params}` locally or run `node --test test/cypher-builder.test.js`
 from the package directory. Tests name fixtures and invalid argument positions.
-The builder emits no logs; avoid logging sensitive params in the future adapter.
+Neither builder nor adapter logs query parameters, triple contents or credentials.
+Graph tests in `test/neo4j-graph.test.js` name failures by alias, integer boundary,
+transaction order and lifecycle. Transport tests localize native failure phases.
