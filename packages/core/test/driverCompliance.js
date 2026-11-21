@@ -22,6 +22,45 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       return;
     }
 
+    describe('Lossless string contract', () => {
+      let client, graph;
+      beforeEach(async () => {
+        client = await clientFactory();
+        graph = client.getGraph();
+        await graph.clear();
+      });
+      afterEach(async () => { await client.close(); });
+
+      it('distinguishes equal-content IRI and quoted literal and preserves lexical values', async () => {
+        const objects = ['urn:o', '"urn:o"', '"001"^^<http://www.w3.org/2001/XMLSchema#integer>'];
+        for (const object of objects) await graph.add('urn:s', 'urn:p', object);
+        const cursor = await graph.find('urn:s', 'urn:p', null);
+        expect(cursor.getTriples().map(t => t.object)).to.have.members(objects);
+        expect(await graph.count()).to.equal(3);
+        cursor.close();
+        await graph.remove('urn:s', 'urn:p', '"urn:o"');
+        expect(await graph.has('urn:s', 'urn:p', 'urn:o')).to.equal(true);
+        expect(await graph.has('urn:s', 'urn:p', '"urn:o"')).to.equal(false);
+      });
+
+      it('canonicalizes plain/xsd:string and language tag case', async () => {
+        for (const object of ['"text"', '"text"^^<http://www.w3.org/2001/XMLSchema#string>', '"bonjour"@FR', '"bonjour"@fr']) {
+          await graph.add('urn:s', 'urn:p', object);
+        }
+        expect((await graph.find()).getTriples().map(t => t.object)).to.have.members(['"text"', '"bonjour"@fr']);
+      });
+
+      for (const terms of [['"subject"', 'urn:p', 'urn:o'], ['urn:s', '"predicate"', 'urn:o'],
+        [null, 'urn:p', 'urn:o'], ['urn:s', 'urn:p', undefined]]) {
+        it(`rejects invalid add positions ${JSON.stringify(terms)}`, async () => {
+          let error;
+          try { await graph.add(...terms); } catch (caught) { error = caught; }
+          expect(error, 'invalid add must reject').to.be.instanceOf(Error);
+          expect(await graph.count()).to.equal(0);
+        });
+      }
+    });
+
     describe('Triple add and find', () => {
       it('stores and retrieves a triple', async function() {
         const client = await clientFactory();

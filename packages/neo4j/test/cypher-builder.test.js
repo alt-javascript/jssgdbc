@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CypherBuilder } from '../index.js';
+// The workspace runner explicitly lists this file; include the contract regressions.
+import './lossless.test.js';
 
 const query = 'MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})\n'
   + 'MERGE (o:JssgdbcTerm {graph: $graph, kind: $objectKind, value: $object})\n'
