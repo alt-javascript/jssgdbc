@@ -31,7 +31,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         const found = await cursor.next();
         expect(found).to.be.true;
         cursor.close();
-        client.close();
+        await client.close();
       });
     });
 
@@ -45,7 +45,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         const found = await cursor.next();
         expect(found).to.be.false;
         cursor.close();
-        client.close();
+        await client.close();
       });
     });
 
@@ -60,7 +60,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         while (await cursor.next()) count++;
         expect(count).to.equal(2);
         cursor.close();
-        client.close();
+        await client.close();
       });
 
       it('finds triples with null predicate wildcard', async function() {
@@ -73,7 +73,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         while (await cursor.next()) count++;
         expect(count).to.equal(2);
         cursor.close();
-        client.close();
+        await client.close();
       });
 
       it('finds triples with null object wildcard', async function() {
@@ -86,7 +86,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         while (await cursor.next()) count++;
         expect(count).to.equal(2);
         cursor.close();
-        client.close();
+        await client.close();
       });
     });
 
@@ -102,7 +102,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         cursor.close();
         graph1.close();
         graph2.close();
-        client.close();
+        await client.close();
       });
     });
 
@@ -120,7 +120,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         }
         expect(results).to.have.length(3);
         cursor.close();
-        client.close();
+        await client.close();
       });
     });
 
@@ -129,7 +129,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         const client = await clientFactory();
         expect(client).to.be.instanceof(Client);
         expect(client.getUrl()).to.match(/^jssgdbc:/);
-        client.close();
+        await client.close();
       });
     });
 
@@ -139,7 +139,7 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         const graph = client.getGraph();
         expect(graph).to.be.instanceof(Graph);
         graph.close();
-        client.close();
+        await client.close();
       });
     });
   });
