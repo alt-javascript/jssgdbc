@@ -1,0 +1,20 @@
+name: jssgdbc-neo4j-test
+services:
+  neo4j:
+    image: neo4j:5.26.0-community
+    ports:
+      - "127.0.0.1:17687:7687"
+    environment:
+      NEO4J_AUTH: none
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 128m
+    tmpfs:
+      - /data
+      - /logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 'RETURN 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s

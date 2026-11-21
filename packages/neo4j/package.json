@@ -23,7 +23,8 @@
   },
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/neo4j",
   "scripts": {
-    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js test/neo4j-graph.test.js"
+    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js test/neo4j-graph.test.js",
+    "test:integration": "node --test test/neo4j-integration.test.js"
   },
   "dependencies": {
     "@alt-javascript/jssgdbc-core": "*",

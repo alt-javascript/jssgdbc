@@ -52,8 +52,8 @@ operation and a recognized-format native driver code; native messages, causes,
 credentials and parameters are not retained in the exposed error. No query or
 credential logging is configured. Run `npm test --workspace=packages/neo4j` for
 offline transport, graph decoding/lifecycle and mapper diagnostics. Live service
-proof and fixture readiness/startup/teardown commands remain T03; no live service
-or concurrency result is claimed by these offline tests.
+checks and fixture readiness/startup/teardown commands are documented below; no live
+service or concurrency result is claimed by these offline tests.
 
 `client.getGraph(null)`, `getGraph(undefined)` and `getGraph('')` share the same
 cached default graph. Graph handles reject operations after graph or client close,
@@ -213,6 +213,48 @@ buffer all matching rows; there is no pagination or backpressure. At 10x write
 concurrency, hot-subject lock contention or connection pool acquisition can become
 the first bottleneck. Timeouts/retry budgets bound individual waits, not memory.
 Orphan nodes accumulate on remove/clear; storage reclamation is not implemented.
+
+## Disposable live fixture
+
+From the repository root, with Docker running:
+
+```sh
+docker compose -f packages/neo4j/compose.test.yml up -d --wait --wait-timeout 240
+npm run test:integration --workspace=packages/neo4j
+docker compose -f packages/neo4j/compose.test.yml down --volumes
+```
+
+Always run teardown, including after test or readiness failure. The pinned
+`neo4j:5.26.0-community` fixture exposes only Bolt on `127.0.0.1:17687`;
+HTTP is not published. Data and logs use ephemeral tmpfs, not production volumes.
+Authentication is disabled **only for this disposable local fixture**. Do not
+point this suite at a shared service or change a remote service's authentication.
+The suite intentionally has no remote URL override: it uses
+`jssgdbc:neo4j:bolt://127.0.0.1:17687`, database `neo4j`, no credentials,
+2000ms connection/acquisition timeout and 10000ms transaction/retry budget.
+Run on a trusted local machine; any local process can access this fixture.
+
+Compose waits for a successful `cypher-shell RETURN 1` health check. Pull/startup
+or readiness failure is a failure, not a skip. The integration command also fails
+when the service is absent. It prints the actual server version from
+`dbms.components()` only after a successful connection. Named tests cover CRUD,
+all eight wildcard masks, exact string round trips, independent-client duplicate
+inserts (including blank nodes and self-loops), opposite endpoints, constraints,
+application-data isolation and lifecycle. Twelve concurrent writes per case are
+bounded correctness checks, not throughput claims. Buffering and hot-subject
+contention limits above still apply.
+
+Cleanup in `finally` awaits driver closure and deletes only run-owned named
+graphs/default subject and sentinel nodes. Fixture teardown reclaims remaining
+orphan terms. The unavailable-endpoint case uses a freshly released loopback port
+and asserts bounded, redacted failure context. Offline malformed-row/integer tests
+remain necessary because normal servers do not produce those invalid records.
+
+Verification note (2026-11-21): after initial image-pull timeouts, fixture startup
+and health checks succeeded. The non-skipped integration suite passed both tests
+against the observed Neo4j runtime **5.26.0**, including public CRUD and bounded
+cross-client concurrency checks. This is correctness evidence, not a throughput
+or broader server-version compatibility claim.
 
 ## Diagnostics
 
