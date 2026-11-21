@@ -1,13 +1,11 @@
 # @alt-javascript/jssgdbc-file
 
-![npm @alt-javascript/jssgdbc-file](https://img.shields.io/npm/v/%40alt-javascript%2Fjssgdbc-file?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
-## Install
+## Local development
 
-```bash
-npm install @alt-javascript/jssgdbc-file @alt-javascript/jssgdbc-core
-```
+Experimental, pre-publication workspace package. Run `npm ci` from the repository
+root; package imports below resolve through npm workspaces. See the [root README](../../README.md).
 
 ## Usage
 
@@ -25,9 +23,9 @@ const graph = client.getGraph();
 
 // Add a triple (async)
 await graph.add(
-  'http://example.org/alice',
-  'http://xmlns.com/foaf/0.1/name',
-  'Alice'
+  '<http://example.org/alice>',
+  '<http://xmlns.com/foaf/0.1/name>',
+  '"Alice"'
 );
 
 // Find triples (async, returns a Cursor)
@@ -38,9 +36,9 @@ for await (const triple of cursor) {
 
 // Remove a triple (async)
 await graph.remove(
-  'http://example.org/alice',
-  'http://xmlns.com/foaf/0.1/name',
-  'Alice'
+  '<http://example.org/alice>',
+  '<http://xmlns.com/foaf/0.1/name>',
+  '"Alice"'
 );
 ```
 
@@ -69,7 +67,7 @@ Wildcard parameters (pass `null`) match any value:
 
 ```javascript
 // Find all triples with this subject
-const cursor = await graph.find('http://example.org/alice', null, null);
+const cursor = await graph.find('<http://example.org/alice>', null, null);
 
 // Find all triples (any subject, any predicate, any object)
 const cursor = await graph.find(null, null, null);
@@ -88,6 +86,10 @@ For example, with URL `jssgdbc:file:/tmp/mytriples`:
 - Named graph `events` → `/tmp/mytriples/events.nt`
 
 ## Known Limitations
+
+- **Term format**: use angle-bracketed IRIs and quoted literals as above. The public graph API wraps bare strings as IRIs; the low-level serializer requires formatted terms. Results strip IRI brackets and plain-literal quotes, so an untyped string result loses that distinction.
+- **Codec edge cases**: literal contents containing `@` or `^^`, non-BMP Unicode, and malformed input need further correctness work; the current suite is not full N-Triples conformance.
+- **Graph names**: names are interpolated into file paths without an encoding layer. Use trusted simple names; graph IRI portability and path containment are planned work.
 
 - **In-memory loading**: The entire contents of an .nt file are read into memory on first access. This means very large triple stores (millions of triples) may consume significant memory. No streaming mode is available.
 - **No file-locking**: This driver does not implement file-level locking. If multiple Node.js processes write to the same directory concurrently, file corruption may occur. Use a single writer or coordinate external synchronization.

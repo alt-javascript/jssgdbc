@@ -1,13 +1,11 @@
 # @alt-javascript/jssgdbc-core
 
-![npm @alt-javascript/jssgdbc-core](https://img.shields.io/npm/v/%40alt-javascript%2Fjssgdbc-core?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
-## Install
+## Local development
 
-```bash
-npm install @alt-javascript/jssgdbc-core
-```
+Experimental, pre-publication workspace package. Run `npm ci` from the repository
+root; package imports below resolve through npm workspaces. See the [root README](../../README.md).
 
 ## Interfaces
 
@@ -17,7 +15,7 @@ npm install @alt-javascript/jssgdbc-core
 | **DriverManager** | Static registry and URL dispatcher. Call `registerDriver(driver)` to register implementations, and `getClient(url, properties)` to retrieve a client by URL scheme. |
 | **Client** | Connection to a triple-store backend. Call `getGraph(name)` to access named graphs (default graph if name is omitted). |
 | **Graph** | Async triple CRUD operations. Methods: `add(subject, predicate, object)`, `remove(subject, predicate, object)`, `find(subject, predicate, object)`, `has(subject, predicate, object)`, `count(subject, predicate, object)`, `clear()`. Wildcard parameters (null) in `find()` match any value. |
-| **Cursor** | Forward-only async iterator over triple results. Call `next()` to advance, `getTriple()` to fetch the current triple. Implements async iteration: `for await (const triple of cursor) { ... }`. |
+| **Cursor** | Forward-only async iterator over buffered triple results; not a streaming cursor. Call `next()` to advance, `getTriple()` to fetch the current triple. Implements async iteration: `for await (const triple of cursor) { ... }`. |
 | **UnsupportedOperationError** | Thrown by hook methods that are not implemented in a driver. |
 | **ClientDataSource** | Factory wrapper for creating clients from URLs and properties. |
 
@@ -43,14 +41,15 @@ const graph = client.getGraph();
 Implement the `Driver` interface and validate it against the jssgdbc compliance harness:
 
 ```javascript
-import { testDriverCompliance } from '@alt-javascript/jssgdbc-core/test/driverCompliance.js';
+import driverComplianceTests from '@alt-javascript/jssgdbc-core/test/driverCompliance.js';
 
 const myDriver = new MyDriver();
-const clientFactory = async (url) => {
-  return await myDriver.connect(url, {});
+const clientFactory = async () => {
+  return await myDriver.connect('jssgdbc:my-driver:', {});
 };
 
-await testDriverCompliance(myDriver, clientFactory);
+// Register tests inside a Mocha suite; this function is not an async runner.
+driverComplianceTests('My driver', clientFactory);
 ```
 
 ## License

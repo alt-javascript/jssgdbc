@@ -2,7 +2,8 @@
 
 Triple-pattern access to a SPARQL HTTP endpoint.
 
-Install with `npm install @alt-javascript/jssgdbc-sparql`. Use ES modules and a
+Experimental, pre-publication workspace package. Run `npm ci` from the repository
+root. Package imports below resolve through workspaces. Use ES modules and a
 runtime providing native `fetch`, `Headers`, `AbortController`, `URL` and
 `performance` (for example a maintained Node.js 22+ release). The package has no
 `engines` constraint and does not install a fetch polyfill.

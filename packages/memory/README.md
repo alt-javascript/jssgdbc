@@ -1,13 +1,11 @@
 # @alt-javascript/jssgdbc-memory
 
-![npm @alt-javascript/jssgdbc-memory](https://img.shields.io/npm/v/%40alt-javascript%2Fjssgdbc-memory?style=flat-square)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
-## Install
+## Local development
 
-```bash
-npm install @alt-javascript/jssgdbc-memory @alt-javascript/jssgdbc-core
-```
+Experimental, pre-publication workspace package. Run `npm ci` from the repository
+root; package imports below resolve through npm workspaces. See the [root README](../../README.md).
 
 ## Usage
 

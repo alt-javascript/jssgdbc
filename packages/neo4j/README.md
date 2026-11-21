@@ -3,11 +3,10 @@
 Neo4j storage for the jssgdbc subject/predicate/object graph API. No arbitrary
 Cypher or SPARQL execution is exposed by the public graph API.
 
-## Install and connect
+## Local development and connection
 
-```sh
-npm install @alt-javascript/jssgdbc-neo4j
-```
+Experimental, pre-publication workspace package. Run `npm ci` from the repository
+root. Package imports below resolve through workspaces.
 
 Importing the public package registers a driver once, without opening a connection.
 It also re-exports `DriverManager` and the core API. If you explicitly clear the
