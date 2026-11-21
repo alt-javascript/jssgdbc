@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm test --workspace=packages/core --workspace=packages/memory --workspace=packages/file --workspace=packages/sparql"
+    "test": "npm test --workspace=packages/core --workspace=packages/memory --workspace=packages/file --workspace=packages/sparql --workspace=packages/neo4j"
   },
   "author": "Craig Parravicini",
   "contributors": [

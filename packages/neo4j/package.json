@@ -1,0 +1,31 @@
+{
+  "name": "@alt-javascript/jssgdbc-neo4j",
+  "version": "1.0.0",
+  "description": "Parameterized SPO-to-Cypher builder for jssgdbc",
+  "keywords": ["neo4j", "cypher", "query-builder", "rdf", "triple-store"],
+  "type": "module",
+  "main": "index.js",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alt-javascript/jssgdbc",
+    "directory": "packages/neo4j"
+  },
+  "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/neo4j",
+  "scripts": {
+    "test": "node --test test/cypher-builder.test.js"
+  },
+  "author": "Craig Parravicini",
+  "contributors": ["Claude (Anthropic)"],
+  "license": "MIT"
+}
