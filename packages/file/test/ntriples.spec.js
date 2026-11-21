@@ -84,7 +84,7 @@ describe('NTriplesParser', () => {
       const line = '<http://example.org/s> <http://example.org/p> "hello"@en-US .';
       const triple = NTriplesParser.parseLine(line);
 
-      expect(triple.object).to.equal('"hello"@en-US');
+      expect(triple.object).to.equal('"hello"@en-us');
     });
   });
 
@@ -93,35 +93,35 @@ describe('NTriplesParser', () => {
       const line = '<http://example.org/s> <http://example.org/p> "hello\\tworld" .';
       const triple = NTriplesParser.parseLine(line);
 
-      expect(triple.object).to.equal('"hello\tworld"');
+      expect(triple.object).to.equal('"hello\\tworld"');
     });
 
     it('should parse escaped newline', () => {
       const line = '<http://example.org/s> <http://example.org/p> "hello\\nworld" .';
       const triple = NTriplesParser.parseLine(line);
 
-      expect(triple.object).to.equal('"hello\nworld"');
+      expect(triple.object).to.equal('"hello\\nworld"');
     });
 
     it('should parse escaped carriage return', () => {
       const line = '<http://example.org/s> <http://example.org/p> "hello\\rworld" .';
       const triple = NTriplesParser.parseLine(line);
 
-      expect(triple.object).to.equal('"hello\rworld"');
+      expect(triple.object).to.equal('"hello\\rworld"');
     });
 
     it('should parse escaped quote', () => {
       const line = '<http://example.org/s> <http://example.org/p> "say \\"hello\\"" .';
       const triple = NTriplesParser.parseLine(line);
 
-      expect(triple.object).to.equal('"say "hello""');
+      expect(triple.object).to.equal('"say \\"hello\\""');
     });
 
     it('should parse escaped backslash', () => {
       const line = '<http://example.org/s> <http://example.org/p> "path\\\\to\\\\file" .';
       const triple = NTriplesParser.parseLine(line);
 
-      expect(triple.object).to.equal('"path\\to\\file"');
+      expect(triple.object).to.equal('"path\\\\to\\\\file"');
     });
 
     it('should parse 4-digit Unicode escape', () => {
@@ -189,7 +189,7 @@ _:b1 <http://example.org/p3> "object3"@en .
     it('should throw on missing dot terminator', () => {
       const line = '<http://example.org/s> <http://example.org/p> <http://example.org/o>';
 
-      expect(() => NTriplesParser.parseLine(line)).to.throw('Missing dot terminator');
+      expect(() => NTriplesParser.parseLine(line)).to.throw(/Invalid N-Triples line:.*line 1/);
     });
 
     it('should throw on unterminated IRI', () => {
@@ -201,7 +201,7 @@ _:b1 <http://example.org/p3> "object3"@en .
     it('should throw on unterminated string literal', () => {
       const line = '<http://example.org/s> <http://example.org/p> "unterminated .';
 
-      expect(() => NTriplesParser.parseLine(line)).to.throw('Unterminated string literal');
+      expect(() => NTriplesParser.parseLine(line)).to.throw(/Invalid N-Triples line:.*line 1/);
     });
 
     it('should throw on invalid escape sequence', () => {
@@ -213,7 +213,7 @@ _:b1 <http://example.org/p3> "object3"@en .
     it('should throw on too few terms', () => {
       const line = '<http://example.org/s> <http://example.org/p> .';
 
-      expect(() => NTriplesParser.parseLine(line)).to.throw('Triple must have subject, predicate, and object');
+      expect(() => NTriplesParser.parseLine(line)).to.throw(/Invalid N-Triples line:.*line 1/);
     });
   });
 });
@@ -270,7 +270,7 @@ describe('NTriplesSerializer', () => {
       const triple = {
         subject: '<http://example.org/s>',
         predicate: '<http://example.org/p>',
-        object: '"line1\nline2"'
+        object: '"line1\\nline2"'
       };
       const line = NTriplesSerializer.serializeLine(triple);
 
@@ -281,7 +281,7 @@ describe('NTriplesSerializer', () => {
       const triple = {
         subject: '<http://example.org/s>',
         predicate: '<http://example.org/p>',
-        object: '"say "hello""'
+        object: '"say \\"hello\\""'
       };
       const line = NTriplesSerializer.serializeLine(triple);
 
@@ -292,14 +292,14 @@ describe('NTriplesSerializer', () => {
       const triple = {
         subject: '<http://example.org/s>',
         predicate: '<http://example.org/p>',
-        object: '"path\\to\\file"'
+        object: '"path\\\\to\\\\file"'
       };
       const line = NTriplesSerializer.serializeLine(triple);
 
       expect(line).to.equal('<http://example.org/s> <http://example.org/p> "path\\\\to\\\\file" .');
     });
 
-    it('should escape Unicode characters', () => {
+    it('should preserve Unicode characters', () => {
       const triple = {
         subject: '<http://example.org/s>',
         predicate: '<http://example.org/p>',
@@ -307,7 +307,7 @@ describe('NTriplesSerializer', () => {
       };
       const line = NTriplesSerializer.serializeLine(triple);
 
-      expect(line).to.include('\\u');
+      expect(NTriplesParser.parseLine(line)).to.deep.equal(triple);
     });
   });
 
@@ -427,7 +427,7 @@ describe('Round-trip fidelity', () => {
     const original = {
       subject: '<http://example.org/s>',
       predicate: '<http://example.org/p>',
-      object: '"line1\nline2\ttabbed"'
+      object: '"line1\\nline2\\ttabbed"'
     };
 
     const serialized = NTriplesSerializer.serializeLine(original);

@@ -2,7 +2,14 @@
   "name": "@alt-javascript/jssgdbc-file",
   "version": "1.0.0",
   "description": "File-based triple-store driver for jssgdbc — persists triples to N-Triples (.nt) files",
-  "keywords": ["triple-store", "rdf", "n-triples", "file", "serialization", "parser"],
+  "keywords": [
+    "triple-store",
+    "rdf",
+    "n-triples",
+    "file",
+    "serialization",
+    "parser"
+  ],
   "type": "module",
   "main": "index.js",
   "sideEffects": [
@@ -28,7 +35,8 @@
     "test": "mocha --recursive 'test/**/*.spec.js'"
   },
   "dependencies": {
-    "@alt-javascript/jssgdbc-core": "*"
+    "@alt-javascript/jssgdbc-core": "*",
+    "n3": "2.13.12"
   },
   "devDependencies": {
     "chai": "^4.3.7",
