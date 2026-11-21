@@ -4,7 +4,8 @@ import http from 'node:http';
 // optional GRAPH, and the exact SELECT/ASK/COUNT/DATA/CLEAR forms below.
 // Relative-looking IRIs (e.g. <subject1>) are opaque contract-test terms,
 // not an assertion about a vendor's base-IRI resolution. No prefixes,
-// joins, filters, wildcard DELETE, blank nodes or numeric shorthand.
+// joins, filters, blank nodes or numeric shorthand. Wildcard DELETE supports
+// only identical single-pattern DELETE/WHERE templates (not general updates).
 const iri = '<[^<>\\s]+>';
 const literal = '"(?:[^"\\\\\\r\\n]|\\\\(?:["\\\\nrtbf]|u[0-9a-fA-F]{4}))*"(?:@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*|\\^\\^' + iri + ')?';
 const triple = new RegExp(`^(${iri}|\\?s)\\s+(${iri}|\\?p)\\s+(${iri}|${literal}|\\?o)\\s+\\.$`);
@@ -13,6 +14,11 @@ const unsupported = () => { throw new Error('Unsupported fixture request'); };
 function parse(text) {
   const clear = text.match(new RegExp(`^CLEAR (DEFAULT|GRAPH (${iri}))$`));
   if (clear) return { operation: 'CLEAR', graph: clear[2]?.slice(1, -1) ?? '' };
+  const deletion = text.match(/^DELETE\s*\{([\s\S]*)\}\s*WHERE\s*\{([\s\S]*)\}$/);
+  if (deletion) {
+    if (deletion[1].trim() !== deletion[2].trim()) return unsupported();
+    return { ...parse(`SELECT ?s ?p ?o WHERE {${deletion[2]}}`), operation: 'DELETE PATTERN' };
+  }
   const outer = text.match(/^(SELECT \?s \?p \?o WHERE|SELECT \(COUNT\(\*\) AS \?count\) WHERE|ASK|INSERT DATA|DELETE DATA)\s*\{([\s\S]*)\}$/);
   if (!outer) return unsupported();
   const operation = outer[1].startsWith('SELECT (') ? 'COUNT'
@@ -66,7 +72,9 @@ export async function startMockSparqlEndpoint() {
       if (!query) {
         if (operation === 'CLEAR') data.clear();
         else if (operation === 'INSERT DATA') data.set(JSON.stringify(terms), terms);
-        else data.delete(JSON.stringify(terms));
+        else if (operation === 'DELETE PATTERN') {
+          for (const row of rows) data.delete(JSON.stringify(row));
+        } else data.delete(JSON.stringify(terms));
         res.writeHead(204).end();
         return;
       }

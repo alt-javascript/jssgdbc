@@ -12,7 +12,9 @@ describe('SPARQL stateful loopback contract', () => {
   });
   afterEach(async () => {
     try {
-      for (const client of clients) client.close();
+      const results = await Promise.allSettled(clients.map(client => client.close()));
+      const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'SPARQL fixture client cleanup failed');
     } finally {
       try { await fixture?.close(); }
       finally {
@@ -34,7 +36,7 @@ describe('SPARQL stateful loopback contract', () => {
       const rows = [];
       for await (const row of cursor) rows.push(row);
       return rows;
-    } finally { cursor.close(); }
+    } finally { await cursor.close(); }
   }
 
   driverComplianceTests('SparqlDriver Compliance', connect);
@@ -111,6 +113,7 @@ describe('SPARQL stateful loopback contract', () => {
       ['POST', 'ASK { ?s ?p ?o . }'],
       ['POST', 'INSERT DATA { ?s <p> <o> . }'],
       ['POST', 'INSERT DATA { <s> <p> "bad\\z" . }'],
+      ['POST', 'DELETE { ?s ?p ?o . } WHERE { <urn:different> ?p ?o . }'],
       ['POST', 'CLEAR ALL'],
       ['POST', 'CLEAR DEFAULT trailing'],
       ['PUT', 'CLEAR DEFAULT']
@@ -124,8 +127,9 @@ describe('SPARQL stateful loopback contract', () => {
       assert.equal(response.status, 400);
       assert.equal(await response.text(), 'Unsupported fixture request');
     }
-    await assert.rejects(graph.remove('urn:s'), { message: 'SPARQL update: HTTP 400 failure' });
     assert.equal(await graph.count(), 1);
+    await graph.remove('urn:s');
+    assert.equal(await graph.count(), 0);
   });
 
   it('reset clears all graph state and request records', async () => {

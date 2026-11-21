@@ -1,12 +1,15 @@
 import { expect } from 'chai';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { Client } from '../Client.js';
 import { Graph } from '../Graph.js';
 
 /**
  * Shared compliance test generator for jssgdbc drivers.
  *
- * This skeleton provides the structure for driver compliance testing.
+ * Portable assertions for driver compliance testing.
+ * Factories must supply owned disposable storage, including the default graph;
+ * graph-local clear is part of this suite and is intentionally destructive.
  * Drivers implement their own tests by calling driverComplianceTests()
  * and providing a clientFactory function.
  *
@@ -153,6 +156,43 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       }
     });
 
+    describe('Portable lexical distinctions', () => {
+      it('preserves lexical, language and datatype identity across every operation', async () => {
+        const id = `urn:compliance:${randomUUID()}`;
+        const graph = (await connect()).getGraph(`${id}:graph`);
+        const objects = ['urn:o', '"urn:o"', '"001"^^<http://www.w3.org/2001/XMLSchema#integer>',
+          '"1"^^<http://www.w3.org/2001/XMLSchema#integer>', '"001"',
+          '"same"@en', '"same"@fr', '"same"', '"same"^^<urn:datatype>',
+          '"quote\\\" slash\\\\ newline\\n雪😀"'];
+        try {
+          for (const object of objects) await graph.add(`${id}:s`, `${id}:p`, object);
+          expect((await find(graph)).getTriples().map(row => row.object)).to.have.members(objects);
+          for (const object of objects) {
+            assert.equal(await graph.count(`${id}:s`, `${id}:p`, object), 1);
+            assert.equal(await graph.has(`${id}:s`, `${id}:p`, object), true);
+            expect((await find(graph, `${id}:s`, `${id}:p`, object)).getTriples()).to.deep.equal([
+              { subject: `${id}:s`, predicate: `${id}:p`, object }
+            ]);
+            await graph.remove(`${id}:s`, `${id}:p`, object);
+            assert.equal(await graph.has(`${id}:s`, `${id}:p`, object), false);
+          }
+          assert.equal(await graph.count(), 0);
+          for (const [input, canonical] of [['"text"^^<http://www.w3.org/2001/XMLSchema#string>', '"text"'],
+            ['"bonjour"@FR', '"bonjour"@fr'], [String.raw`"\u96EA"`, '"雪"']]) {
+            await graph.add(`<${id}:s>`, `<${id}:p>`, input);
+            await graph.add(`${id}:s`, `${id}:p`, canonical);
+            assert.equal(await graph.count(`${id}:s`, `<${id}:p>`, input), 1);
+            assert.equal(await graph.has(`<${id}:s>`, `${id}:p`, canonical), true);
+            expect((await find(graph, `<${id}:s>`, `${id}:p`, input)).getTriples()).to.deep.equal([
+              { subject: `${id}:s`, predicate: `${id}:p`, object: canonical }
+            ]);
+            await graph.remove(`${id}:s`, `<${id}:p>`, input);
+            assert.equal(await graph.has(`${id}:s`, `${id}:p`, canonical), false);
+          }
+        } finally { await graph.clear(); }
+      });
+    });
+
     describe('Triple add and find', () => {
       it('stores and retrieves a triple', async function() {
         const client = await connect();
@@ -221,19 +261,67 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       });
     });
 
-    describe('Named graph isolation', () => {
-      it('isolates data between named graphs', async function() {
+    describe('Portable pattern and graph semantics', () => {
+      // Each case owns its named graph; no cleanup may reset other datasets.
+      for (const wildcard of [null, undefined]) {
+        for (let mask = 0; mask < 8; mask++) {
+          it(`find/has/count/remove agree for bound mask ${mask}, wildcard ${wildcard}`, async () => {
+            const id = `urn:compliance:${randomUUID()}`;
+            const graph = (await connect()).getGraph(`${id}:graph`);
+            const rows = [];
+            for (const s of [0, 1]) for (const p of [0, 1]) for (const o of [0, 1]) {
+              rows.push([`${id}:s${s}`, `${id}:p${p}`, `"object${o}"`]);
+            }
+            const pattern = rows[0].map((term, i) => mask & (1 << i) ? term : wildcard);
+            const matches = row => row.every((term, i) => pattern[i] == null || term === pattern[i]);
+            const triples = values => values.map(([subject, predicate, object]) => ({ subject, predicate, object }));
+            try {
+              for (const row of rows) await graph.add(...row);
+              const expected = rows.filter(matches);
+              expect((await find(graph, ...pattern)).getTriples()).to.have.deep.members(triples(expected));
+              assert.equal(await graph.count(...pattern), expected.length);
+              assert.equal(await graph.has(...pattern), true);
+              await graph.remove(`${id}:absent`, null, null);
+              assert.equal(await graph.count(), 8);
+              await graph.remove(...pattern);
+              assert.equal(await graph.count(...pattern), 0);
+              assert.equal(await graph.has(...pattern), false);
+              expect((await find(graph, ...pattern)).getTriples()).to.deep.equal([]);
+              expect((await find(graph)).getTriples()).to.have.deep.members(triples(rows.filter(row => !matches(row))));
+            } finally { await graph.clear(); }
+          });
+        }
+      }
+
+      it('isolates default and two named graphs through pattern removal and graph-local clear', async () => {
+        const id = `urn:compliance:${randomUUID()}`;
         const client = await connect();
-        const graph1 = client.getGraph('graph1');
-        const graph2 = client.getGraph('graph2');
-        await graph1.add('urn:subject1', 'urn:predicate1', 'urn:object1');
-        const cursor = await find(graph2, 'urn:subject1', 'urn:predicate1', 'urn:object1');
-        const found = await cursor.next();
-        expect(found).to.be.false;
-        await cursor.close();
-        await graph1.close();
-        await graph2.close();
-        await client.close();
+        const graphs = [client.getGraph(), client.getGraph(`${id}:a`), client.getGraph(`${id}:b`)];
+        const common = [`${id}:s`, `${id}:p`, '"shared"'];
+        try {
+          for (const [i, graph] of graphs.entries()) {
+            await graph.add(...common);
+            await graph.add(`${id}:s`, `${id}:p`, `"local${i}"`);
+          }
+          for (const [i, graph] of graphs.entries()) {
+            expect((await find(graph, common[0])).getTriples().map(row => row.object)).to.have.members(['"shared"', `"local${i}"`]);
+          }
+          await graphs[1].remove(common[0], null, null);
+          assert.equal(await graphs[1].count(), 0);
+          assert.equal(await graphs[0].count(common[0]), 2);
+          assert.equal(await graphs[2].count(), 2);
+          await graphs[2].clear();
+          assert.equal(await graphs[2].has(), false);
+          assert.equal(await graphs[0].count(common[0]), 2);
+          await graphs[1].add(...common);
+          await graphs[0].clear(); // Factory must provide an owned disposable default graph.
+          assert.equal(await graphs[0].count(), 0);
+          assert.equal(await graphs[1].has(...common), true);
+        } finally {
+          const results = await Promise.allSettled(graphs.map(graph => graph.remove(common[0], null, null)));
+          const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+          if (errors.length) throw new AggregateError(errors, 'Compliance data cleanup failed');
+        }
       });
     });
 
