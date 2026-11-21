@@ -13,13 +13,14 @@ test('runs all four adapters sequentially with finite deadlines', () => {
   assert.equal(calls[3].args[0], 'packages/sparql/test/run-integration.js');
   for (const call of calls) assert.ok(call.options.timeout > 0 && call.options.timeout <= 900000);
 });
-for (const failure of ['exit', 'timeout', 'throw']) test(`aggregates ${failure} without silently skipping backends`, () => {
+for (const failure of ['exit', 'timeout', 'signal', 'throw']) test(`aggregates ${failure} without silently skipping backends`, () => {
   let calls = 0;
   const logs = [];
   assert.equal(runConformance({ report: line => logs.push(line), spawn() {
     calls++;
     if (calls !== 1) return { status: 0 };
     if (failure === 'throw') throw new Error('SECRET');
+    if (failure === 'signal') return { status: null, signal: 'SIGTERM' };
     return failure === 'exit' ? { status: 1 } : { status: null, error: { code: 'ETIMEDOUT' } };
   } }), 1);
   assert.equal(calls, 4);
