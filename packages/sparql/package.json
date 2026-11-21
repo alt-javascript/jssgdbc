@@ -23,7 +23,8 @@
   },
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/sparql#readme",
   "scripts": {
-    "test": "mocha --recursive 'test/**/*.spec.js'"
+    "test": "mocha --recursive 'test/**/*.spec.js'",
+    "test:integration": "node test/run-integration.js"
   },
   "dependencies": {
     "@alt-javascript/jssgdbc-core": "*"

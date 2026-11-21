@@ -9,6 +9,7 @@
     "packages/*"
   ],
   "scripts": {
+    "test:conformance": "node scripts/run-conformance.js",
     "test": "npm test --workspace=packages/core --workspace=packages/memory --workspace=packages/file --workspace=packages/sparql --workspace=packages/neo4j"
   },
   "author": "Craig Parravicini",

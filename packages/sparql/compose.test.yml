@@ -1,0 +1,13 @@
+services:
+  fuseki:
+    build: ./test/fixtures
+    ports:
+      - "127.0.0.1:13330:3030"
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3030/\u0024/ping >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
