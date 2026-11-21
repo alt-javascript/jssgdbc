@@ -1,11 +1,12 @@
 {
   "name": "@alt-javascript/jssgdbc-sparql",
-  "version": "1.0.0",
-  "description": "SPARQL query and update builder for jssgdbc — translates triple patterns into SPARQL 1.1 strings",
+  "version": "0.0.0",
+  "description": "SPARQL endpoint driver and query/update builder for jssgdbc",
   "keywords": ["sparql", "query-builder", "rdf", "triple-store", "endpoint"],
+  "private": true,
   "type": "module",
   "main": "index.js",
-  "sideEffects": false,
+  "sideEffects": ["./index.js", "./SparqlDriver.js"],
   "exports": {
     ".": {
       "import": "./index.js",
@@ -23,11 +24,12 @@
   },
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/sparql#readme",
   "scripts": {
+    "prepublishOnly": "node ../../scripts/prevent-publish.js",
     "test": "mocha --recursive 'test/**/*.spec.js'",
     "test:integration": "node test/run-integration.js"
   },
   "dependencies": {
-    "@alt-javascript/jssgdbc-core": "*"
+    "@alt-javascript/jssgdbc-core": "0.0.0"
   },
   "devDependencies": {
     "chai": "^4.3.7",

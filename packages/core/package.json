@@ -1,10 +1,12 @@
 {
   "name": "@alt-javascript/jssgdbc-core",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Core abstract interfaces for jssgdbc triple-store drivers",
   "keywords": ["triple-store", "rdf", "sparql", "graph-database", "spo", "driver", "abstract", "facade"],
+  "private": true,
   "type": "module",
   "main": "index.js",
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": "./index.js",
@@ -24,6 +26,7 @@
   },
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/core#readme",
   "scripts": {
+    "prepublishOnly": "node ../../scripts/prevent-publish.js",
     "test": "mocha --recursive 'test/**/*.spec.js'"
   },
   "devDependencies": {
