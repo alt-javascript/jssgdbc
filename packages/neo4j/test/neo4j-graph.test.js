@@ -165,26 +165,37 @@ test('count accepts safe native integers and rejects malformed/negative/unsafe v
   assert.equal(state.closed, state.sessions);
 });
 
-test('query failure takes precedence over cleanup failure; both remain redacted', async () => {
+test('query and cleanup failures are both visible and redacted', async () => {
   const { client, state } = fixture();
   state.failure = Object.assign(new Error('secret query'), { code: 'Neo.ClientError.Statement.SyntaxError' });
   state.cleanupFailure = new Error('secret cleanup');
-  await assert.rejects(client.getGraph().find(), { message: 'Neo4j query failed (Neo.ClientError.Statement.SyntaxError)' });
-  await assert.rejects(client.getGraph().add('urn:s', 'urn:p', 'urn:o'), { message: 'Neo4j add failed (Neo.ClientError.Statement.SyntaxError)' });
+  for (const [operation, promise] of [
+    ['query', client.getGraph().find()],
+    ['add', client.getGraph().add('urn:s', 'urn:p', 'urn:o')]
+  ]) await assert.rejects(promise, error => {
+    assert.deepEqual(error.errors.map(e => e.message), [
+      `Neo4j ${operation} failed (Neo.ClientError.Statement.SyntaxError)`, 'Neo4j session close failed'
+    ]);
+    for (const child of error.errors) {
+      assert.doesNotMatch(child.stack, /secret/);
+      assert.equal(child.cause, undefined);
+    }
+    return true;
+  });
   state.failure = null;
-  await assert.rejects(client.getGraph().find(), { message: 'Neo4j query failed' });
+  await assert.rejects(client.getGraph().find(), { message: 'Neo4j session close failed' });
   assert.equal(state.closed, state.sessions);
 });
 
 test('graph close and retained handles after client close fail before I/O', async () => {
   const { client, state } = fixture();
   const graph = client.getGraph();
-  graph.close();
+  await graph.close();
   await assert.rejects(graph.find(), /Graph is closed/);
   const retained = client.getGraph('retained');
   const closing = client.close();
   assert.throws(() => client.getGraph(), /Client is closed/);
-  for (const method of ['add', 'remove', 'find', 'has', 'count', 'clear']) await assert.rejects(retained[method]('urn:s', 'urn:p', 'urn:o'), /Client is closed/);
+  for (const method of ['add', 'remove', 'find', 'has', 'count', 'clear']) await assert.rejects(retained[method]('urn:s', 'urn:p', 'urn:o'), /(?:Client|Graph) is closed/);
   await closing;
   assert.equal(state.sessions, 0);
 });

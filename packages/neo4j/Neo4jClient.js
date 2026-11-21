@@ -67,20 +67,21 @@ export class Neo4jClient extends Client {
     } finally {
       if (session) {
         try { await session.close(); }
-        catch (error) { failure ??= transportError(operation, error); }
+        catch (error) {
+          const cleanup = transportError('session close', error);
+          failure = failure
+            ? new AggregateError([failure, cleanup], `Neo4j ${operation} and session close failed`)
+            : cleanup;
+        }
       }
     }
     if (failure) throw failure;
     return result;
   }
 
-  close() {
-    if (!this._closePromise) {
-      this._closed = true;
-      this._graphs.clear();
-      this._closePromise = Promise.resolve().then(() => this._native.close())
-        .catch(error => { throw transportError('close', error); });
-    }
-    return this._closePromise;
+  async _close() {
+    // Core waits for every owned graph (and its sessions) before release.
+    try { await this._native.close(); }
+    catch (error) { throw transportError('close', error); }
   }
 }

@@ -75,11 +75,15 @@ export class Neo4jDriver extends Driver {
       await client._initialize();
       return client;
     } catch (error) {
-      const failure = transportError(operation, error);
+      // Initialization already returns sanitized errors, including session cleanup.
+      const failure = operation === 'initialize' ? error : transportError(operation, error);
       try {
         if (client) await client.close();
         else if (native) await native.close();
-      } catch { /* Preserve the initialization failure, not cleanup failure. */ }
+      } catch (cleanup) {
+        throw new AggregateError([failure, client ? cleanup : transportError('close', cleanup)],
+          `Neo4j ${operation} and cleanup failed`);
+      }
       throw failure;
     }
   }

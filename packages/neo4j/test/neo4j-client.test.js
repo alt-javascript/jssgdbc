@@ -88,8 +88,16 @@ for (const stage of ['factory', 'verify', 'session', 'transaction', 'query', 'cl
     const f = fixture({ [stage]: secretError(), close: secretError('secret') });
     await assert.rejects(f.driver.connect(url), error => {
       assert.match(error.message, /Neo4j (connect|initialize)/);
-      assert.ok(!error.stack.includes('password'));
-      assert.equal(error.cause, undefined);
+      const inspect = value => {
+        assert.doesNotMatch(value.stack, /secret|password/);
+        assert.equal(value.cause, undefined);
+        for (const child of value.errors ?? []) inspect(child);
+      };
+      inspect(error);
+      if (stage !== 'factory') {
+        assert.equal(error.errors.length, 2);
+        assert.match(error.errors[1].errors[0].message, /Neo4j close failed/);
+      }
       return true;
     });
     assert.equal(f.calls.closes, stage === 'factory' ? 0 : 1);
@@ -97,14 +105,20 @@ for (const stage of ['factory', 'verify', 'session', 'transaction', 'query', 'cl
   });
 }
 
-test('query failure wins over cleanup failure; safe code retained, arbitrary code dropped', async () => {
+test('query and cleanup failures remain visible; safe code retained, arbitrary code dropped', async () => {
   const f = fixture();
   const client = await f.driver.connect(url);
   f.fail.query = secretError('Neo.TransientError.Transaction.DeadlockDetected');
   f.fail.cleanup = secretError('secret');
-  await assert.rejects(client._query('secret', { password: 'secret' }), { message: 'Neo4j query failed (Neo.TransientError.Transaction.DeadlockDetected)' });
+  await assert.rejects(client._query('secret', { password: 'secret' }), error => {
+    assert.deepEqual(error.errors.map(e => e.message), ['Neo4j query failed (Neo.TransientError.Transaction.DeadlockDetected)', 'Neo4j session close failed']);
+    return true;
+  });
   f.fail.query = secretError('password');
-  await assert.rejects(client._query('secret'), { message: 'Neo4j query failed' });
+  await assert.rejects(client._query('secret'), error => {
+    assert.deepEqual(error.errors.map(e => e.message), ['Neo4j query failed', 'Neo4j session close failed']);
+    return true;
+  });
   assert.ok(f.calls.sessions.every(s => s.closes === 1));
   await client.close();
 });
@@ -114,7 +128,7 @@ test('malformed result and session/transaction/cleanup failures remain safe', as
     const f = fixture();
     const client = await f.driver.connect(url);
     f.fail[stage] = stage === 'result' ? { records: null } : secretError();
-    await assert.rejects(client._query('secret'), /Neo4j query failed/);
+    await assert.rejects(client._query('secret'), /Neo4j (query|session close) failed/);
     assert.ok(f.calls.sessions.every(s => s.closes === 1));
     await client.close();
   }
@@ -127,7 +141,10 @@ test('close is synchronous in state, awaitable, idempotent, and redacts native r
   const closing = client.close();
   assert.equal(client.isClosed(), true);
   assert.equal(client.close(), closing);
-  await assert.rejects(closing, /Neo4j close failed/);
+  await assert.rejects(closing, error => {
+    assert.match(error.errors[0].message, /Neo4j close failed/);
+    return true;
+  });
   await assert.rejects(client._query('RETURN 1'), /client is closed/);
   assert.throws(() => client.getGraph(), /closed/);
   assert.equal(f.calls.closes, 1);
