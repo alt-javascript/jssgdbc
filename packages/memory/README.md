@@ -4,42 +4,48 @@
 
 ## Local development
 
-Experimental, pre-publication workspace package. Run `npm ci` from the repository
+Experimental `0.0.0`, local-workspace-only package. Private metadata and a
+rejecting prepublish guard protect against accidental publication, not deliberate
+bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
 root; package imports below resolve through npm workspaces. See the [root README](../../README.md).
 
 ## Usage
 
 Importing this package auto-registers the in-memory driver. Then use `DriverManager.getClient()` to get a client:
 
+<!-- example:memory-quickstart -->
 ```javascript
+import assert from 'node:assert/strict';
 import '@alt-javascript/jssgdbc-memory';
 import { DriverManager } from '@alt-javascript/jssgdbc-core';
 
-// Get a client for the in-memory triple store
 const client = await DriverManager.getClient('jssgdbc:memory:');
-
-// Get the default graph
 const graph = client.getGraph();
-
-// Add a triple (async)
-await graph.add(
-  'http://example.org/alice',
-  'http://xmlns.com/foaf/0.1/name',
-  '"Alice"'
-);
-
-// Find triples (async, returns a Cursor)
-const cursor = await graph.find(null, null, null);
-for await (const triple of cursor) {
-  console.log(triple);
+let cursor;
+try {
+  await graph.add('urn:alice', 'urn:name', '"Alice"');
+  await graph.add('<urn:alice>', 'urn:name',
+    '"Alice"^^<http://www.w3.org/2001/XMLSchema#string>');
+  assert.equal(await graph.count(), 1); // Plain and xsd:string are equivalent.
+  assert.equal(await graph.has('urn:alice', 'urn:name', 'urn:Alice'), false);
+  cursor = await graph.find('urn:alice', null, null);
+  await graph.close();
+  await graph.close(); // Idempotent; does not delete data.
+  await assert.rejects(() => graph.count(), /closed/i);
+  const fresh = client.getGraph();
+  assert.notEqual(fresh, graph);
+  assert.equal(await fresh.has('urn:alice', 'urn:name', '"Alice"'), true);
+  await client.close(); // Owns fresh too; drains admitted operations.
+  assert.throws(() => client.getGraph(), /closed/i);
+  assert.equal(await cursor.next(), true); // Detached buffered result survives.
+  assert.deepEqual(cursor.getTriple(), {
+    subject: 'urn:alice', predicate: 'urn:name', object: '"Alice"'
+  });
+  assert.equal(await cursor.next(), false);
+} finally {
+  try { await cursor?.close(); }
+  finally { await client.close(); }
 }
-
-// Remove a triple (async)
-await graph.remove(
-  'http://example.org/alice',
-  'http://xmlns.com/foaf/0.1/name',
-  '"Alice"'
-);
 ```
 
 ## String terms
@@ -50,6 +56,15 @@ xsd:string literals. Results retain literal quotes and typed lexical values.
 Blank-node labels are graph-scoped, not globally portable. Validation uses
 dependency-free core code; memory depends only on the core workspace, with no
 external runtime dependencies.
+
+## Resource lifecycle
+
+Await idempotent graph/client closure, including in finally blocks. Close drains
+admitted work; it does not cancel it or delete data. An open client can reacquire
+a fresh graph handle after awaited close; closed clients are terminal. Cursors
+are detached buffered results, remain usable after owner close, and need their
+own close. Query results consume O(n) memory; there is no streaming guarantee.
+See the [core lifecycle contract](../core/README.md#resource-lifecycle).
 
 ## URL Scheme
 
@@ -70,14 +85,15 @@ All graph operations are **asynchronous**:
 - `await graph.count(subject, predicate, object)` — Count matching triples
 - `await graph.clear()` — Clear all triples
 
-Wildcard parameters (pass `null`) match any value:
+The following API fragments assume an open `graph` (not standalone programs).
+`null`/`undefined` wildcards match any value only in find/has/count/remove, not add:
 
 ```javascript
 // Find all triples with this subject
 const cursor = await graph.find('http://example.org/alice', null, null);
 
-// Find all triples (any subject, any predicate, any object)
-const cursor = await graph.find(null, null, null);
+// Alternative: find all triples (any subject, predicate, object)
+const all = await graph.find(null, null, null);
 ```
 
 ## License

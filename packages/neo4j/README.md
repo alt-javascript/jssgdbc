@@ -5,7 +5,9 @@ Cypher or SPARQL execution is exposed by the public graph API.
 
 ## Local development and connection
 
-Experimental, pre-publication workspace package. Run `npm ci` from the repository
+Experimental `0.0.0`, local-workspace-only package. Private metadata and a
+rejecting prepublish guard protect against accidental publication, not deliberate
+bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
 root. Package imports below resolve through workspaces.
 
 Importing the public package registers a driver once, without opening a connection.
@@ -63,7 +65,7 @@ export async function defaultExample(url, properties = {}) {
     try {
       while (await cursor.next()) rows.push(cursor.getTriple());
     } finally {
-      cursor.close();
+      await cursor.close();
     }
     await graph.remove(subject, predicate, object);
     const afterRemove = await graph.has(subject);
@@ -71,8 +73,7 @@ export async function defaultExample(url, properties = {}) {
   } finally {
     try { await graph.remove(subject); }
     finally {
-      graph.close();
-      await client.close();
+      await client.close(); // Owns and drains graph cleanup.
     }
   }
 }
@@ -108,10 +109,7 @@ export async function namedExample(url, properties = {}) {
     finally {
       try { await right.clear(); }
       finally {
-        left.close();
-        right.close();
-        def.close();
-        await client.close();
+        await client.close(); // Attempts cleanup of all three graphs.
       }
     }
   }
@@ -168,8 +166,8 @@ npm run test:integration --workspace=packages/neo4j
 npm test
 ```
 
-Default tests are offline and Docker-independent. Fresh live proof for M005 term
-changes is pending S03; deterministic adapter tests are not backend proof. The live runner requires Docker
+Default tests are offline and Docker-independent. Deterministic adapter tests are not backend proof; use the live runner or
+`npm run test:conformance` for current-source backend evidence. The live runner requires Docker
 with Compose, starts `neo4j:5.26.0-community`, waits for health, executes node:test
 smoke and both marked README examples, then shared Mocha compliance in a separate
 process. It prints the actual server version; tests must pass without skips.
@@ -193,3 +191,10 @@ check runs `cypher-shell RETURN 1`; startup waits up to 240 seconds within a bou
 subprocess. Failures are errors, not skips. Do not troubleshoot by disabling remote
 authentication or printing credentials/native error bodies. Run the offline suite
 to distinguish mapping/lifecycle failures from local service availability.
+
+## Handle lifecycle
+
+Await idempotent closure: closing drains admitted work, not cancellation or rollback.
+An open client can reacquire a fresh graph after awaited graph close without
+deleting backend data; a closed client is terminal. Detached buffered cursors
+survive owner closure. See the [core lifecycle contract](../core/README.md#resource-lifecycle).

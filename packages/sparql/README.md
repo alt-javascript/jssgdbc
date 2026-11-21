@@ -2,7 +2,9 @@
 
 Triple-pattern access to a SPARQL HTTP endpoint.
 
-Experimental, pre-publication workspace package. Run `npm ci` from the repository
+Experimental `0.0.0`, local-workspace-only package. Private metadata and a
+rejecting prepublish guard protect against accidental publication, not deliberate
+bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
 root. Package imports below resolve through workspaces. Use ES modules and a
 runtime providing native `fetch`, `Headers`, `AbortController`, `URL` and
 `performance` (for example a maintained Node.js 22+ release). The package has no
@@ -38,9 +40,8 @@ export async function readExample(endpoint, headers = { 'X-Example': 'readme' })
     while (await cursor.next()) rows.push(cursor.getTriple());
     return rows;
   } finally {
-    cursor?.close();
-    graph?.close();
-    client.close();
+    try { await cursor?.close(); }
+    finally { await client.close(); } // Owns and drains all acquired graphs.
   }
 }
 ```
@@ -108,10 +109,8 @@ export async function writeExample(endpoint, {
     return { rows, present, count, afterRemove, afterClear,
       defaultPreserved, defaultAfterRemove };
   } finally {
-    cursor?.close();
-    named?.close();
-    graph?.close();
-    client.close();
+    try { await cursor?.close(); }
+    finally { await client.close(); } // Owns and drains both graphs.
   }
 }
 ```
@@ -169,5 +168,14 @@ A failed update can have an **unknown commit outcome**; do not blindly retry it.
 
 The README examples and shared compliance tests run offline against a narrow
 loopback HTTP fixture. These checks are not live-vendor validation and do not
-establish vendor behavior or endpoint availability. Fresh live proof for M005
-term behavior is pending S03.
+establish vendor behavior or endpoint availability. Run the separate disposable Fuseki acceptance with
+`npm run test:integration --workspace=packages/sparql`, or the aggregate
+`npm run test:conformance`. See [conformance](../core/test/CONFORMANCE.md)
+for pinned versions, evidence boundaries and cleanup diagnostics.
+
+## Handle lifecycle
+
+Await idempotent closure: closing drains admitted work, not cancellation or rollback.
+An open client can reacquire a fresh graph after awaited graph close without
+deleting backend data; a closed client is terminal. Detached buffered cursors
+survive owner closure. See the [core lifecycle contract](../core/README.md#resource-lifecycle).

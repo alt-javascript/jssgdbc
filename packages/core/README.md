@@ -4,7 +4,9 @@
 
 ## Local development
 
-Experimental, pre-publication workspace package. Run `npm ci` from the repository
+Experimental `0.0.0`, local-workspace-only package. Private metadata and a
+rejecting prepublish guard protect against accidental publication, not deliberate
+bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
 root; package imports below resolve through npm workspaces. See the [root README](../../README.md).
 
 ## Interfaces
@@ -23,17 +25,24 @@ root; package imports below resolve through npm workspaces. See the [root README
 
 This package defines abstract interfaces. Concrete drivers are provided by separate packages (e.g., `@alt-javascript/jssgdbc-memory`). To use jssgdbc:
 
-1. Install a driver package alongside this one
+1. Set up this local workspace with a concrete driver package
 2. Import the driver (which auto-registers itself)
 3. Use `DriverManager.getClient()` to get a client
 
+<!-- example:core-quickstart -->
 ```javascript
+import assert from 'node:assert/strict';
 import '@alt-javascript/jssgdbc-memory';  // Auto-registers
 import { DriverManager } from '@alt-javascript/jssgdbc-core';
 
 const client = await DriverManager.getClient('jssgdbc:memory:');
-const graph = client.getGraph();
-// ... use graph
+try {
+  const graph = client.getGraph();
+  assert.equal(await graph.count(), 0);
+} finally {
+  await client.close();
+}
+assert.throws(() => client.getGraph(), /closed/i);
 ```
 
 ## String terms
@@ -85,7 +94,8 @@ or cancellation guarantee.
 
 ## Compliance Testing
 
-Implement the `Driver` interface and validate it against the jssgdbc compliance harness:
+API fragment (requires your `MyDriver` implementation and a Mocha context):
+implement the `Driver` interface and validate it against the compliance harness:
 
 ```javascript
 import driverComplianceTests from '@alt-javascript/jssgdbc-core/test/driverCompliance.js';
