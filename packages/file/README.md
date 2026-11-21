@@ -54,8 +54,9 @@ close/reopen but are not identifiers portable across separate imports/datasets.
 The standalone NTriplesParser/Serializer utilities retain N-Triples surface
 syntax, including IRI brackets. N3 is confined to this file workspace; malformed
 N-Triples rejects with line or triple/position context. File I/O errors propagate.
-Files are eagerly rewritten on mutation, not streamed or transactionally rolled
-back; large graphs and write failures require application-level care.
+Files are eagerly rewritten on mutation using atomic replacement. Failed
+serialization, writes or replacement leave the previous payload and in-memory
+state intact; this is not a multi-operation transaction.
 
 ## URL Scheme
 
@@ -90,23 +91,49 @@ const cursor = await graph.find(null, null, null);
 
 ## Persistence Behavior
 
-The file driver persists triples to N-Triples (.nt) files:
+- **Bounded identities**: Each string graph name maps to a directory named
+  `v1-` plus the SHA-256 hex digest of `JSON.stringify(name)`. Names never become
+  path components. Empty/default (`''`) and `'default'`, case variants, Unicode
+  normalization variants and lone surrogates remain distinct identities.
+- **Exact validation**: Each keyed directory contains `identity.json` with
+  `{ "version": 1, "name": <exact name> }` and, once persisted, `graph.nt`.
+  Metadata is checked before reading or replacing payloads. Malformed/missing
+  metadata in existing entries and mismatched identities fail closed.
+- **Lazy load, eager flush**: First access loads the whole N-Triples document.
+  Mutations serialize the whole graph to an exclusively created owned temporary
+  file, then atomically rename it over `graph.nt`. In-memory changes are published
+  only after persistence succeeds. Operations are serialized per handle.
+- **Safe paths**: Configured root components, keyed directories and metadata/
+  payload leaves reject symlinks and invalid types. No-follow file opens are used
+  where supported, and regular files are verified. Root creation checks each
+  component rather than recursively traversing unchecked paths.
+- **Retained data**: Await graph/client close to drain admitted work; close never
+  deletes data. An open client can reacquire a fresh handle after awaited graph
+  close, reloading persisted data. Clients themselves are terminal after close.
+- **No migration**: Legacy `default.nt` / `{name}.nt` files are neither loaded nor
+  migrated. There is no legacy-path fallback. Back up and explicitly migrate old
+  data before adopting this layout.
 
-- **Lazy-load on first access**: The driver reads from disk only when a graph operation is first called. If the .nt file does not exist, an empty graph is created.
-- **Eager-flush on mutation**: After any add, remove, or clear operation, the entire graph is serialized back to disk immediately.
-- **One file per graph**: Each named graph is stored in its own .nt file. The default graph (unnamed) is stored as `default.nt`, and named graphs are stored as `{name}.nt` within the configured directory.
-
-For example, with URL `jssgdbc:file:/tmp/mytriples`:
-- Default graph → `/tmp/mytriples/default.nt`
-- Named graph `events` → `/tmp/mytriples/events.nt`
+Storage errors include a safe operation and bounded key, not graph content or
+native filesystem paths. Failed temporary-file cleanup retains the original
+failure and the cleanup failure in `AggregateError.errors`.
 
 ## Known Limitations
 
 - **Conformance scope**: deterministic tests cover delimiters, escaping, Unicode and malformed inputs, but are not a claim of exhaustive N-Triples conformance.
-- **Graph names**: names are interpolated into file paths without an encoding layer. Use trusted simple names; graph IRI portability and path containment are planned work.
-
-- **In-memory loading**: The entire contents of an .nt file are read into memory on first access. This means very large triple stores (millions of triples) may consume significant memory. No streaming mode is available.
-- **No file-locking**: This driver does not implement file-level locking. If multiple Node.js processes write to the same directory concurrently, file corruption may occur. Use a single writer or coordinate external synchronization.
+- **Trusted directory ownership required**: The root and its ancestors must be
+  controlled by trusted owners. Portable Node.js checks cannot eliminate races
+  with concurrent hostile directory/ancestor replacement. Symlink rejection is
+  not a sandbox against an attacker who can rename those directories.
+- **Whole-document buffering**: Loading, serialization and rewrites are O(n) in
+  graph size and consume memory/disk bandwidth accordingly. Buffered query
+  cursors add result-size memory. No streaming or cancellation is provided.
+- **No writer coordination**: Per-handle serialization does not coordinate
+  multiple clients, processes or overlapping handles. Use one writer or external
+  synchronization; concurrent writers can lose updates.
+- **No fsync crash-durability guarantee**: Atomic replacement protects the old
+  payload from failed writes/renames, but does not promise survival across power
+  loss, filesystem failure or OS crashes.
 
 ## License
 

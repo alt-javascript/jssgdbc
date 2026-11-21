@@ -60,6 +60,29 @@ promise stable labels or portable blank-node lookup/removal. In SPARQL a blank
 label in a query pattern is existential, not a persistent node identifier.
 Use IRIs when identity must survive independent remote operations.
 
+## Resource lifecycle
+
+Always await `graph.close()` and `client.close()`, including in `finally` blocks.
+Closing marks a handle terminal immediately: new graph operations reject, and a
+closed client rejects `getGraph()`. Client close owns and closes all its graphs.
+Close drains already admitted operations, including adapter session cleanup,
+before releasing resources; it does **not** cancel requests or transactions.
+
+On an open client, await a graph's close before calling `getGraph(name)` again.
+The returned handle is fresh and existing backend data is retained. Closing a
+graph or client does not delete data; use explicit mutation operations for that.
+A closed client cannot reconnect; acquire another client instead.
+
+Repeated close calls return the same promise and the same success or failure.
+Client shutdown attempts every owned graph cleanup and its own release even if
+cleanup fails, surfacing failures in `AggregateError.errors`. Repeating close is
+not a cleanup retry. Handle rejected close promises rather than ignoring them.
+
+Cursors are detached, buffered results: they remain usable after graph/client
+closure and do not reflect later mutations. Close cursors separately when done.
+Buffering consumes memory proportional to result size; this is not a streaming
+or cancellation guarantee.
+
 ## Compliance Testing
 
 Implement the `Driver` interface and validate it against the jssgdbc compliance harness:
