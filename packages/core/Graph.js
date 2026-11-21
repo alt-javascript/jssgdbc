@@ -6,6 +6,8 @@ export class Graph {
     this._client = client;
     this._name = name;
     this._closed = false;
+    this._closePromise = null;
+    this._activeOperations = new Set();
   }
 
   getName() {
@@ -14,27 +16,27 @@ export class Graph {
 
   async add(subject, predicate, object) {
     this._checkClosed();
-    return this._add(normalizeTerm(subject, 'subject'), normalizeTerm(predicate, 'predicate'), normalizeTerm(object));
+    return this._runOperation(() => this._add(normalizeTerm(subject, 'subject'), normalizeTerm(predicate, 'predicate'), normalizeTerm(object)));
   }
 
   async remove(subject, predicate, object) {
     this._checkClosed();
-    return this._remove(...this._pattern(subject, predicate, object));
+    return this._runOperation(() => this._remove(...this._pattern(subject, predicate, object)));
   }
 
   async find(subject, predicate, object) {
     this._checkClosed();
-    return this._find(...this._pattern(subject, predicate, object));
+    return this._runOperation(() => this._find(...this._pattern(subject, predicate, object)));
   }
 
   async has(subject, predicate, object) {
     this._checkClosed();
-    return this._has(...this._pattern(subject, predicate, object));
+    return this._runOperation(() => this._has(...this._pattern(subject, predicate, object)));
   }
 
   async count(subject, predicate, object) {
     this._checkClosed();
-    return this._count(...this._pattern(subject, predicate, object));
+    return this._runOperation(() => this._count(...this._pattern(subject, predicate, object)));
   }
 
   _pattern(subject, predicate, object) {
@@ -43,7 +45,7 @@ export class Graph {
 
   async clear() {
     this._checkClosed();
-    return this._clear();
+    return this._runOperation(() => this._clear());
   }
 
   _add(subject, predicate, object) {
@@ -70,9 +72,32 @@ export class Graph {
     throw new UnsupportedOperationError('clear not implemented');
   }
 
-  close() {
-    this._closed = true;
+  // Register before invoking the adapter, including synchronous/reentrant work.
+  _runOperation(operation) {
+    let resolve, reject;
+    const pending = new Promise((yes, no) => { resolve = yes; reject = no; });
+    this._activeOperations.add(pending);
+    const release = () => { this._activeOperations.delete(pending); };
+    pending.then(release, release);
+    try { resolve(operation()); } catch (error) { reject(error); }
+    return pending;
   }
+
+  close() {
+    if (this._closePromise) return this._closePromise;
+    this._closed = true;
+    this._closePromise = Promise.allSettled([...this._activeOperations])
+      .then(() => this._close());
+    this._client?._graphClosing(this);
+    const release = () => { this._client?._graphClosed(this); };
+    // Both branches handle settlement without creating an unobserved rejection.
+    this._closePromise.then(release, release);
+    return this._closePromise;
+  }
+
+  // Adapter resource release only: never await the owning client's close here.
+  // Public operation admission already happened; do not recheck closure mid-work.
+  _close() {}
 
   isClosed() {
     return this._closed;
@@ -82,5 +107,6 @@ export class Graph {
     if (this._closed) {
       throw new Error('Graph is closed');
     }
+    this._client?._checkClosed();
   }
 }

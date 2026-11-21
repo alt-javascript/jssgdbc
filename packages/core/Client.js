@@ -8,6 +8,8 @@ export class Client {
     this._properties = properties;
     this._graphs = new Map();
     this._closed = false;
+    this._closePromise = null;
+    this._ownedGraphs = new Set();
   }
 
   getGraph(name = '') {
@@ -17,6 +19,7 @@ export class Client {
     }
     const graph = this._getGraph(name);
     this._graphs.set(name, graph);
+    this._ownedGraphs.add(graph);
     return graph;
   }
 
@@ -28,9 +31,36 @@ export class Client {
     return this._url;
   }
 
-  close() {
-    this._closed = true;
+  _graphClosing(graph) {
+    if (this._graphs.get(graph.getName()) === graph) {
+      this._graphs.delete(graph.getName());
+    }
+    // Ownership survives cache eviction until resource cleanup settles.
   }
+
+  _graphClosed(graph) {
+    this._ownedGraphs.delete(graph);
+  }
+
+  close() {
+    if (this._closePromise) return this._closePromise;
+    this._closed = true;
+    const owned = [...this._ownedGraphs];
+    // Defer invocation so the cached promise exists even for reentrant hooks.
+    this._closePromise = Promise.resolve().then(async () => {
+      const outcomes = await Promise.allSettled(
+        owned.map(graph => Promise.resolve().then(() => graph.close()))
+      );
+      const errors = outcomes.filter(result => result.status === 'rejected')
+        .map(result => result.reason);
+      try { await this._close(); } catch (error) { errors.push(error); }
+      if (errors.length) throw new AggregateError(errors, 'Client cleanup failed');
+    });
+    return this._closePromise;
+  }
+
+  // Adapter release happens only after all owned graph cleanup has settled.
+  _close() {}
 
   isClosed() {
     return this._closed;

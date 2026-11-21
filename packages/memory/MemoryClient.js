@@ -4,6 +4,7 @@ import { MemoryGraph } from './MemoryGraph.js';
 export class MemoryClient extends Client {
   constructor(driver, url, properties) {
     super(driver, url, properties);
+    // Stores outlive individual graph handles; core close evicts handles, not data.
     this._stores = new Map();
   }
 
