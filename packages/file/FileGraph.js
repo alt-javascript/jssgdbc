@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { Graph } from '../core/Graph.js';
+import { normalizeTerm } from '../core/StringTerm.js';
 import { Cursor } from '../core/Cursor.js';
 import { NTriplesParser } from './NTriplesParser.js';
 import { NTriplesSerializer } from './NTriplesSerializer.js';
@@ -20,7 +21,9 @@ export class FileGraph extends Graph {
 
     try {
       const text = await fs.readFile(this._filePath, 'utf-8');
-      this._store = NTriplesParser.parse(text);
+      this._store = NTriplesParser.parse(text).map(triple => Object.fromEntries(
+        Object.entries(triple).map(([position, term]) => [position, this._normalizeTerm(normalizeTerm(term, position))])
+      ));
     } catch (err) {
       if (err.code === 'ENOENT') {
         this._store = [];
@@ -122,9 +125,6 @@ export class FileGraph extends Graph {
       return term;
     }
     if (term.startsWith('<') && term.endsWith('>')) {
-      return term.slice(1, -1);
-    }
-    if (term.startsWith('"') && term.endsWith('"')) {
       return term.slice(1, -1);
     }
     return term;

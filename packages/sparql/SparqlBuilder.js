@@ -1,3 +1,5 @@
+import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
+
 export class SparqlBuilder {
   static buildSelect(graphName, subject, predicate, object) {
     const pattern = this.buildTriplePattern(graphName, subject, predicate, object);
@@ -88,16 +90,8 @@ export class SparqlBuilder {
       }
     }
 
-    // Already formatted terms: pass through
-    if (typeof value === 'string') {
-      if (value.startsWith('<') || value.startsWith('_:') || value.startsWith('"')) {
-        return value;
-      }
-      // Bare string: wrap in angle brackets with IRI escaping
-      return this.escapeIri(value);
-    }
-
-    return String(value);
+    const term = normalizeTerm(value, position);
+    return term.startsWith('_:') || term.startsWith('"') ? term : `<${term}>`;
   }
 
   static escapeIri(iri) {

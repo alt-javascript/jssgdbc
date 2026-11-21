@@ -65,16 +65,17 @@ describe('SparqlGraph', () => {
         assert.throws(() => cursor.getTriple(), /out of bounds/);
         assert.equal(await cursor.next(), true);
         assert.deepEqual(cursor.getTriple(), Object.fromEntries(['subject', 'predicate', 'object'].map((key, i) =>
-          [key, mask & (1 << i) ? bound[i] : `urn:${variables[i]}`])));
+          [key, mask & (1 << i) ? bound[i].replace(/^<|>$/g, '') : `urn:${variables[i]}`])));
         assert.equal(await cursor.next(), false);
       });
     }
   }
 
-  it('preserves false, zero and empty string as bound values', async () => {
+  it('rejects false, zero and empty string as bound values', async () => {
     const f = fixture();
     f.respond(results({}));
-    assert.deepEqual((await f.graph.find(false, 0, '')).getTriples(), [{ subject: false, predicate: 0, object: '' }]);
+    await assert.rejects(f.graph.find(false, 0, ''), TypeError);
+    assert.deepEqual(f.calls, []);
   });
 
   it('decodes URI, blank nodes, escaped literals, language and datatype with async iteration', async () => {
@@ -83,7 +84,7 @@ describe('SparqlGraph', () => {
       [uri('urn:o'), 'urn:o'],
       [{ type: 'bnode', value: 'b1' }, '_:b1'],
       [literal('"\\\n\r\t\b\f\u0000\u001f\u007f\u0085'), '"\\"\\\\\\n\\r\\t\\u0008\\u000C\\u0000\\u001F\\u007F\\u0085"'],
-      [{ ...literal('bonjour'), 'xml:lang': 'fr-CA' }, '"bonjour"@fr-CA'],
+      [{ ...literal('bonjour'), 'xml:lang': 'fr-CA' }, '"bonjour"@fr-ca'],
       [{ ...literal('1'), datatype: 'urn:type' }, '"1"^^<urn:type>'],
       [{ type: 'typed-literal', value: '2', datatype: 'urn:type' }, '"2"^^<urn:type>'],
       [{ ...literal('hi'), 'xml:lang': 'en', datatype: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString' }, '"hi"@en'],
@@ -103,7 +104,7 @@ describe('SparqlGraph', () => {
     const f = fixture();
     assert.equal(await (await f.graph.find()).next(), false);
     f.respond(results({}));
-    const cursor = await f.graph.find('s', 'p', 'o');
+    const cursor = await f.graph.find('urn:s', 'urn:p', 'urn:o');
     f.client.close();
     assert.equal(await cursor.next(), true);
   });
@@ -122,7 +123,7 @@ describe('SparqlGraph', () => {
       await assert.rejects(f.graph.find(), { message: 'SPARQL SELECT: invalid result' });
     }
     f.respond(results({ extra: { type: 'triple', value: 'SECRET' } }));
-    await assert.rejects(f.graph.find('s', 'p', 'o'), /SELECT: invalid result/);
+    await assert.rejects(f.graph.find('urn:s', 'urn:p', 'urn:o'), /SELECT: invalid result/);
   });
 
   it('accepts only strict ASK booleans', async () => {
@@ -154,9 +155,9 @@ describe('SparqlGraph', () => {
     const f = fixture();
     for (let i = 0; i < 3; i++) {
       for (const value of [null, undefined]) {
-        const terms = ['s', 'p', 'o'];
+        const terms = ['urn:s', 'urn:p', 'urn:o'];
         terms[i] = value;
-        await assert.rejects(f.graph.add(...terms), /INSERT DATA requires bound/);
+        await assert.rejects(f.graph.add(...terms), /requires a bound term/);
       }
     }
     assert.deepEqual(f.calls, []);
@@ -167,7 +168,7 @@ describe('SparqlGraph', () => {
       const f = fixture();
       f[handle].close();
       for (const method of ['find', 'has', 'count', 'add', 'remove', 'clear']) {
-        await assert.rejects(f.graph[method]('s', 'p', 'o'), /closed/);
+        await assert.rejects(f.graph[method]('urn:s', 'urn:p', 'urn:o'), /closed/);
       }
       assert.deepEqual(f.calls, []);
     });
@@ -179,7 +180,7 @@ describe('SparqlGraph', () => {
     f.client._query = async () => { calls++; throw new Error('SPARQL query: timeout failure'); };
     f.client._update = async () => { calls++; throw new Error('SPARQL update: HTTP 503 failure'); };
     for (const method of ['find', 'has', 'count']) await assert.rejects(f.graph[method](), /query: timeout/);
-    for (const method of ['add', 'remove', 'clear']) await assert.rejects(f.graph[method]('s', 'p', 'o'), /update: HTTP 503/);
+    for (const method of ['add', 'remove', 'clear']) await assert.rejects(f.graph[method]('urn:s', 'urn:p', 'urn:o'), /update: HTTP 503/);
     assert.equal(calls, 6);
   });
 });

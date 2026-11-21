@@ -42,6 +42,21 @@ await graph.remove(
 );
 ```
 
+## String terms and persistence
+
+Graph methods follow the [core string-term contract](../core/README.md#string-terms).
+Both `urn:s` and `<urn:s>` identify the same IRI; graph results use `urn:s`.
+Literal results retain double quotes and supported language/datatype suffixes.
+Escapes canonicalize without changing lexical content; language tags lowercase
+and xsd:string becomes a plain quoted literal. Blank labels survive a local
+close/reopen but are not identifiers portable across separate imports/datasets.
+
+The standalone NTriplesParser/Serializer utilities retain N-Triples surface
+syntax, including IRI brackets. N3 is confined to this file workspace; malformed
+N-Triples rejects with line or triple/position context. File I/O errors propagate.
+Files are eagerly rewritten on mutation, not streamed or transactionally rolled
+back; large graphs and write failures require application-level care.
+
 ## URL Scheme
 
 This driver accepts the `jssgdbc:file:<directory>` URL scheme, where `<directory>` is the path to a directory where N-Triples files will be stored:
@@ -87,8 +102,7 @@ For example, with URL `jssgdbc:file:/tmp/mytriples`:
 
 ## Known Limitations
 
-- **Term format**: use angle-bracketed IRIs and quoted literals as above. The public graph API wraps bare strings as IRIs; the low-level serializer requires formatted terms. Results strip IRI brackets and plain-literal quotes, so an untyped string result loses that distinction.
-- **Codec edge cases**: literal contents containing `@` or `^^`, non-BMP Unicode, and malformed input need further correctness work; the current suite is not full N-Triples conformance.
+- **Conformance scope**: deterministic tests cover delimiters, escaping, Unicode and malformed inputs, but are not a claim of exhaustive N-Triples conformance.
 - **Graph names**: names are interpolated into file paths without an encoding layer. Use trusted simple names; graph IRI portability and path containment are planned work.
 
 - **In-memory loading**: The entire contents of an .nt file are read into memory on first access. This means very large triple stores (millions of triples) may consume significant memory. No streaming mode is available.

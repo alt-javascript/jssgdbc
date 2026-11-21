@@ -50,6 +50,27 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         expect((await graph.find()).getTriples().map(t => t.object)).to.have.members(['"text"', '"bonjour"@fr']);
       });
 
+      it('matches canonical IRIs and escapes in all pattern operations', async () => {
+        await graph.add('<urn:s>', '<urn:p>', String.raw`"\u96EA\U0001F600"`);
+        await graph.add('urn:s', 'urn:p', '"雪😀"');
+        expect(await graph.count('urn:s', '<urn:p>', '"雪😀"')).to.equal(1);
+        expect(await graph.has('<urn:s>', 'urn:p', String.raw`"\u96EA😀"`)).to.equal(true);
+        expect((await graph.find()).getTriples()).to.deep.equal([{ subject: 'urn:s', predicate: 'urn:p', object: '"雪😀"' }]);
+        await graph.remove('<urn:s>', 'urn:p', String.raw`"\u96EA😀"`);
+        expect(await graph.count()).to.equal(0);
+      });
+
+      for (const invalid of ['', 'bare', '<relative>', '"unfinished', '"x"\n', '"x" # comment', '"x" <urn:extra>', '"x"@', '"x"^^<relative>', String.raw`"\uD800"`, String.raw`"\U00110000"`, '_:bad.', '_:bad\n', 42, false]) {
+        it(`rejects malformed bound terms before mutation or pattern lookup: ${JSON.stringify(invalid)}`, async () => {
+          for (const method of ['add', 'find', 'has', 'count', 'remove']) {
+            let error;
+            try { await graph[method]('urn:s', 'urn:p', invalid); } catch (caught) { error = caught; }
+            expect(error, method).to.be.instanceOf(TypeError);
+          }
+          expect(await graph.count()).to.equal(0);
+        });
+      }
+
       for (const terms of [['"subject"', 'urn:p', 'urn:o'], ['urn:s', '"predicate"', 'urn:o'],
         [null, 'urn:p', 'urn:o'], ['urn:s', 'urn:p', undefined]]) {
         it(`rejects invalid add positions ${JSON.stringify(terms)}`, async () => {
@@ -65,8 +86,8 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('stores and retrieves a triple', async function() {
         const client = await clientFactory();
         const graph = client.getGraph();
-        await graph.add('subject1', 'predicate1', 'object1');
-        const cursor = await graph.find('subject1', 'predicate1', 'object1');
+        await graph.add('urn:subject1', 'urn:predicate1', 'urn:object1');
+        const cursor = await graph.find('urn:subject1', 'urn:predicate1', 'urn:object1');
         const found = await cursor.next();
         expect(found).to.be.true;
         cursor.close();
@@ -78,9 +99,9 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('removes a stored triple', async function() {
         const client = await clientFactory();
         const graph = client.getGraph();
-        await graph.add('subject1', 'predicate1', 'object1');
-        await graph.remove('subject1', 'predicate1', 'object1');
-        const cursor = await graph.find('subject1', 'predicate1', 'object1');
+        await graph.add('urn:subject1', 'urn:predicate1', 'urn:object1');
+        await graph.remove('urn:subject1', 'urn:predicate1', 'urn:object1');
+        const cursor = await graph.find('urn:subject1', 'urn:predicate1', 'urn:object1');
         const found = await cursor.next();
         expect(found).to.be.false;
         cursor.close();
@@ -92,9 +113,9 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('finds triples with null subject wildcard', async function() {
         const client = await clientFactory();
         const graph = client.getGraph();
-        await graph.add('subject1', 'predicate1', 'object1');
-        await graph.add('subject2', 'predicate1', 'object1');
-        const cursor = await graph.find(null, 'predicate1', 'object1');
+        await graph.add('urn:subject1', 'urn:predicate1', 'urn:object1');
+        await graph.add('urn:subject2', 'urn:predicate1', 'urn:object1');
+        const cursor = await graph.find(null, 'urn:predicate1', 'urn:object1');
         let count = 0;
         while (await cursor.next()) count++;
         expect(count).to.equal(2);
@@ -105,9 +126,9 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('finds triples with null predicate wildcard', async function() {
         const client = await clientFactory();
         const graph = client.getGraph();
-        await graph.add('subject1', 'predicate1', 'object1');
-        await graph.add('subject1', 'predicate2', 'object1');
-        const cursor = await graph.find('subject1', null, 'object1');
+        await graph.add('urn:subject1', 'urn:predicate1', 'urn:object1');
+        await graph.add('urn:subject1', 'urn:predicate2', 'urn:object1');
+        const cursor = await graph.find('urn:subject1', null, 'urn:object1');
         let count = 0;
         while (await cursor.next()) count++;
         expect(count).to.equal(2);
@@ -118,9 +139,9 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('finds triples with null object wildcard', async function() {
         const client = await clientFactory();
         const graph = client.getGraph();
-        await graph.add('subject1', 'predicate1', 'object1');
-        await graph.add('subject1', 'predicate1', 'object2');
-        const cursor = await graph.find('subject1', 'predicate1', null);
+        await graph.add('urn:subject1', 'urn:predicate1', 'urn:object1');
+        await graph.add('urn:subject1', 'urn:predicate1', 'urn:object2');
+        const cursor = await graph.find('urn:subject1', 'urn:predicate1', null);
         let count = 0;
         while (await cursor.next()) count++;
         expect(count).to.equal(2);
@@ -134,8 +155,8 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
         const client = await clientFactory();
         const graph1 = client.getGraph('graph1');
         const graph2 = client.getGraph('graph2');
-        await graph1.add('subject1', 'predicate1', 'object1');
-        const cursor = await graph2.find('subject1', 'predicate1', 'object1');
+        await graph1.add('urn:subject1', 'urn:predicate1', 'urn:object1');
+        const cursor = await graph2.find('urn:subject1', 'urn:predicate1', 'urn:object1');
         const found = await cursor.next();
         expect(found).to.be.false;
         cursor.close();
@@ -149,10 +170,10 @@ export default function driverComplianceTests(suiteName, clientFactory, options 
       it('iterates over find results', async function() {
         const client = await clientFactory();
         const graph = client.getGraph();
-        await graph.add('s1', 'p', 'o1');
-        await graph.add('s1', 'p', 'o2');
-        await graph.add('s1', 'p', 'o3');
-        const cursor = await graph.find('s1', 'p', null);
+        await graph.add('urn:s1', 'urn:p', 'urn:o1');
+        await graph.add('urn:s1', 'urn:p', 'urn:o2');
+        await graph.add('urn:s1', 'urn:p', 'urn:o3');
+        const cursor = await graph.find('urn:s1', 'urn:p', null);
         const results = [];
         for await (const triple of cursor) {
           results.push(triple);

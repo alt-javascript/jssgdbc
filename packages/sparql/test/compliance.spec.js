@@ -39,10 +39,10 @@ describe('SPARQL stateful loopback contract', () => {
 
   driverComplianceTests('SparqlDriver Compliance', connect);
 
-  it('round-trips bare and absolute IRIs and escaped, language and typed literals', async () => {
+  it('round-trips absolute IRIs and escaped, language and typed literals', async () => {
     const graph = (await connect()).getGraph();
-    const objects = ['object1', 'https://example.org/object', '"hello"', '"a\\"b\\\\c\\n雪"',
-      '"bonjour"@fr-CA', '"42"^^<http://www.w3.org/2001/XMLSchema#integer>'];
+    const objects = ['urn:object1', 'https://example.org/object', '"hello"', '"a\\"b\\\\c\\n雪"',
+      '"bonjour"@fr-ca', '"42"^^<http://www.w3.org/2001/XMLSchema#integer>'];
     for (const object of objects) await graph.add('https://example.org/s', 'urn:p', object);
     assert.deepEqual(await collect(graph), objects.map(object => ({ subject: 'https://example.org/s', predicate: 'urn:p', object })));
   });
@@ -51,42 +51,42 @@ describe('SPARQL stateful loopback contract', () => {
     const graph = (await connect()).getGraph();
     assert.equal(await graph.has(), false);
     assert.equal(await graph.count(), 0);
-    for (const terms of [['s', 'p', 'o'], ['s', 'p', 'o'], ['p', 's', 'o'], ['s', 'q', 'x']]) await graph.add(...terms);
+    for (const terms of [['urn:s', 'urn:p', 'urn:o'], ['urn:s', 'urn:p', 'urn:o'], ['urn:p', 'urn:s', 'urn:o'], ['urn:s', 'urn:q', 'urn:x']]) await graph.add(...terms);
     assert.equal(await graph.count(), 3);
-    assert.equal(await graph.count('s'), 2);
-    assert.equal(await graph.count(null, 'p'), 1);
-    assert.equal(await graph.count(null, null, 'o'), 2);
-    assert.equal(await graph.has('s', 'p', 'o'), true);
-    assert.equal(await graph.has('s', 'o', 'p'), false);
-    assert.deepEqual(await collect(graph, 'missing'), []);
-    await graph.remove('missing', 'p', 'o');
+    assert.equal(await graph.count('urn:s'), 2);
+    assert.equal(await graph.count(null, 'urn:p'), 1);
+    assert.equal(await graph.count(null, null, 'urn:o'), 2);
+    assert.equal(await graph.has('urn:s', 'urn:p', 'urn:o'), true);
+    assert.equal(await graph.has('urn:s', 'urn:o', 'urn:p'), false);
+    assert.deepEqual(await collect(graph, 'urn:missing'), []);
+    await graph.remove('urn:missing', 'urn:p', 'urn:o');
     assert.equal(await graph.count(), 3);
-    await graph.remove('s', 'p', 'o');
-    assert.equal(await graph.has('s', 'p', 'o'), false);
+    await graph.remove('urn:s', 'urn:p', 'urn:o');
+    assert.equal(await graph.has('urn:s', 'urn:p', 'urn:o'), false);
     assert.equal(await graph.count(), 2);
-    assert.deepEqual(await collect(graph, 'p'), [{ subject: 'p', predicate: 's', object: 'o' }]);
+    assert.deepEqual(await collect(graph, 'urn:p'), [{ subject: 'urn:p', predicate: 'urn:s', object: 'urn:o' }]);
   });
 
   it('isolates default and named graph insert, delete and clear in both directions', async () => {
     const client = await connect();
     const graphs = [client.getGraph(), client.getGraph('urn:a'), client.getGraph('urn:b')];
-    for (const graph of graphs) await graph.add('s', 'p', 'o');
-    await graphs[1].remove('s', 'p', 'o');
+    for (const graph of graphs) await graph.add('urn:s', 'urn:p', 'urn:o');
+    await graphs[1].remove('urn:s', 'urn:p', 'urn:o');
     assert.deepEqual(await Promise.all(graphs.map(graph => graph.count())), [1, 0, 1]);
     await graphs[0].clear();
     assert.deepEqual(await Promise.all(graphs.map(graph => graph.has())), [false, false, true]);
-    await graphs[0].add('s', 'p', 'o');
+    await graphs[0].add('urn:s', 'urn:p', 'urn:o');
     await graphs[2].clear();
     assert.deepEqual(await Promise.all(graphs.map(graph => graph.count())), [1, 0, 0]);
   });
 
   it('records method, operation, graph scope and safe configuration headers', async () => {
     const graph = (await connect({ headers: { 'X-Example': 'fixture' } })).getGraph('urn:g');
-    await graph.add('s', 'p', 'o');
+    await graph.add('urn:s', 'urn:p', 'urn:o');
     await collect(graph);
     await graph.has();
     await graph.count();
-    await graph.remove('s', 'p', 'o');
+    await graph.remove('urn:s', 'urn:p', 'urn:o');
     await graph.clear();
     assert.deepEqual(fixture.requests.map(({ method, operation, graph }) => [method, operation, graph]), [
       ['POST', 'INSERT DATA', 'urn:g'], ['GET', 'SELECT', 'urn:g'], ['GET', 'ASK', 'urn:g'],
@@ -102,7 +102,7 @@ describe('SPARQL stateful loopback contract', () => {
 
   it('rejects unsupported syntax and transport forms explicitly without mutating data', async () => {
     const graph = (await connect()).getGraph();
-    await graph.add('s', 'p', 'o');
+    await graph.add('urn:s', 'urn:p', 'urn:o');
     const cases = [
       ['GET', 'SELECT * WHERE { ?s ?p ?o . }'],
       ['GET', 'ASK { ?s ?p ?o . FILTER(true) }'],
@@ -124,14 +124,14 @@ describe('SPARQL stateful loopback contract', () => {
       assert.equal(response.status, 400);
       assert.equal(await response.text(), 'Unsupported fixture request');
     }
-    await assert.rejects(graph.remove('s'), { message: 'SPARQL update: HTTP 400 failure' });
+    await assert.rejects(graph.remove('urn:s'), { message: 'SPARQL update: HTTP 400 failure' });
     assert.equal(await graph.count(), 1);
   });
 
   it('reset clears all graph state and request records', async () => {
     const client = await connect();
-    await client.getGraph().add('s', 'p', 'o');
-    await client.getGraph('urn:g').add('s', 'p', 'o');
+    await client.getGraph().add('urn:s', 'urn:p', 'urn:o');
+    await client.getGraph('urn:g').add('urn:s', 'urn:p', 'urn:o');
     fixture.reset();
     assert.deepEqual(fixture.requests, []);
     assert.equal(await client.getGraph().count(), 0);

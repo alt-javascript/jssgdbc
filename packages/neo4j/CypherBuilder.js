@@ -1,3 +1,5 @@
+import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
+
 const ADD_QUERY = 'MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})\n'
   + 'MERGE (o:JssgdbcTerm {graph: $graph, kind: $objectKind, value: $object})\n'
   + 'MERGE (s)-[r:JSSGDBC_TRIPLE {predicate: $predicate}]->(o)';
@@ -13,7 +15,7 @@ function normalizeGraph(graphName, operation) {
   return requireString(graphName ?? '', operation, 'graphName', 1);
 }
 
-// Classify API strings only; never parse, normalize, or coerce supplied values.
+// Canonical string identity without coercing typed lexical values.
 function encodeTerm(value, operation, position, index) {
   requireString(value, operation, position, index);
   const kind = value.startsWith('"') || value.startsWith("'") ? 'literal'
@@ -24,7 +26,7 @@ function encodeTerm(value, operation, position, index) {
   if (position === 'predicate' && kind !== 'iri') {
     throw new TypeError(`${operation}: predicate (argument ${index}) must be an IRI`);
   }
-  return { kind, value };
+  return { kind, value: normalizeTerm(value, position) };
 }
 
 const MATCH_QUERY = 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})';

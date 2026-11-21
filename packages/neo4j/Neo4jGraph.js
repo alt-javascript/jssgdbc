@@ -1,3 +1,4 @@
+import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
 import neo4j from 'neo4j-driver';
 import { Graph, Cursor } from '@alt-javascript/jssgdbc-core';
 import { CypherBuilder } from './CypherBuilder.js';
@@ -31,7 +32,7 @@ export class Neo4jGraph extends Graph {
     const rows = await this._client._query(query, params);
     const triples = decodeRows(rows, ['subject', 'predicate', 'object'], 'find', triple => {
       if (!Object.values(triple).every(value => typeof value === 'string')) throw new Error();
-      return triple;
+      return Object.fromEntries(Object.entries(triple).map(([position, value]) => [position, normalizeTerm(value, position)]));
     });
     return new Cursor(triples);
   }

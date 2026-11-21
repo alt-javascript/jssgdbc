@@ -44,8 +44,8 @@ test('public CRUD, exact values, isolation, constraints and cross-client set sem
     const triples = [
       { subject: `urn:${owner}:s`, predicate: 'urn:p', object: '"quote \\" and \\\\ slash"@en' },
       { subject: '_:blank', predicate: 'urn:p', object: '_:object' },
-      { subject: `urn:${owner}:s`, predicate: 'urn:q', object: '<urn:iri>' },
-      { subject: 'urn:x\' MATCH (n) DETACH DELETE n //', predicate: 'urn:p\\"', object: '"injection\' RETURN 1 //"' }
+      { subject: `urn:${owner}:s`, predicate: 'urn:q', object: 'urn:iri' },
+      { subject: 'urn:injection', predicate: 'urn:p', object: '"injection\' RETURN 1 //"' }
     ];
     assert.equal(await graph.count(), 0);
     assert.equal(await graph.has(), false);

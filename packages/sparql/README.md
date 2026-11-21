@@ -120,11 +120,16 @@ Closing handles is not rollback. If a step fails, previous writes can remain.
 
 ## Terms, graphs and handles
 
-- Bare strings, including object strings, are IRIs, not string literals. Prefer
-  absolute IRIs. Quoted RDF literals must use RDF syntax, e.g. `'"Hello"'`,
-  `'"Bonjour"@fr'`, or `'"42"^^<http://www.w3.org/2001/XMLSchema#integer>'`.
-  Preformatted `<IRI>`, `_:blankNode` and quoted terms pass through; this is not
-  a general RDF validator or an escaping boundary for untrusted RDF input.
+- Follow the [core string contract](../core/README.md#string-terms): IRIs must
+  be absolute, optionally bracketed. Literal objects require double-quoted RDF
+  syntax, e.g. `'"Hello"'`, `'"Bonjour"@fr'`, or
+  `'"001"^^<http://www.w3.org/2001/XMLSchema#integer>'`. Literal quotes and typed
+  lexical values remain intact; equivalent escapes canonicalize, language tags
+  lowercase and xsd:string becomes plain quoted syntax. Invalid terms/positions
+  reject before HTTP I/O; graph names remain a separate trusted input boundary.
+- Blank labels are dataset-scoped, not stable identifiers across requests.
+  In query patterns they are existential variables; DELETE DATA cannot portably
+  address blank nodes by label. Use IRIs for portable remote lookup/removal.
 - `null` or omitted arguments are wildcards for find/has/count/remove.
   `add` requires all three terms. Wildcard remove generates DELETE/WHERE;
   fully bound remove generates DELETE DATA.
@@ -164,4 +169,5 @@ A failed update can have an **unknown commit outcome**; do not blindly retry it.
 
 The README examples and shared compliance tests run offline against a narrow
 loopback HTTP fixture. These checks are not live-vendor validation and do not
-establish vendor-relative-IRI behavior or endpoint availability.
+establish vendor behavior or endpoint availability. Fresh live proof for M005
+term behavior is pending S03.

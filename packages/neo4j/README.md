@@ -120,19 +120,20 @@ export async function namedExample(url, properties = {}) {
 
 `getGraph()`, `getGraph(null)` and `getGraph('')` refer to the default graph.
 Named graphs are exact strings. Omitted/null/undefined pattern positions are
-wildcards; empty strings are concrete terms. Mutations return `undefined`.
+wildcards; empty strings are rejected terms. Mutations return `undefined`.
 
 ## Storage and operational limits
 
 See [SCHEMA.md](SCHEMA.md) for the precise mapping and transaction contract.
 `JssgdbcTerm` nodes have graph-scoped identity `(graph, kind, value)`.
 `JSSGDBC_TRIPLE` is the fixed relationship type; its `predicate` property stores
-the predicate, never a dynamic relationship type or label. Terms retain their exact
-spellings: `urn:x` and `<urn:x>` differ. Leading single/double quotes classify a
-literal, `_:` a blank node, everything else an IRI. This is not RDF parsing or
-normalization. Subjects cannot be literals; predicates must be IRIs; objects allow
-all three kinds. Language tags, datatype suffixes, escapes and whitespace persist
-unchanged. Identical blank identifiers in different graphs are distinct nodes.
+the predicate, never a dynamic relationship type or label. Terms follow the
+[core string contract](../core/README.md#string-terms): `urn:x` and `<urn:x>`
+are equivalent; quoted `"urn:x"` is a distinct literal. Subjects cannot be
+literals; predicates require IRIs. Literal quotes and typed lexical values remain
+intact; equivalent escapes canonicalize, language tags lowercase and xsd:string
+becomes plain quoted syntax. Blank labels are graph-scoped, not globally portable.
+Malformed terms reject before I/O. Legacy noncanonical data is not migrated.
 
 Adds have set semantics, using graph-scoped uniqueness and a transactional subject
 write lock. Do not bypass this write protocol or use `_jssgdbcLock` for application
@@ -167,7 +168,8 @@ npm run test:integration --workspace=packages/neo4j
 npm test
 ```
 
-Default tests are offline and Docker-independent. The live runner requires Docker
+Default tests are offline and Docker-independent. Fresh live proof for M005 term
+changes is pending S03; deterministic adapter tests are not backend proof. The live runner requires Docker
 with Compose, starts `neo4j:5.26.0-community`, waits for health, executes node:test
 smoke and both marked README examples, then shared Mocha compliance in a separate
 process. It prints the actual server version; tests must pass without skips.

@@ -1,4 +1,5 @@
 import { UnsupportedOperationError } from './errors.js';
+import { normalizeTerm } from './StringTerm.js';
 
 export class Graph {
   constructor(client, name) {
@@ -13,27 +14,31 @@ export class Graph {
 
   async add(subject, predicate, object) {
     this._checkClosed();
-    return this._add(subject, predicate, object);
+    return this._add(normalizeTerm(subject, 'subject'), normalizeTerm(predicate, 'predicate'), normalizeTerm(object));
   }
 
   async remove(subject, predicate, object) {
     this._checkClosed();
-    return this._remove(subject, predicate, object);
+    return this._remove(...this._pattern(subject, predicate, object));
   }
 
   async find(subject, predicate, object) {
     this._checkClosed();
-    return this._find(subject, predicate, object);
+    return this._find(...this._pattern(subject, predicate, object));
   }
 
   async has(subject, predicate, object) {
     this._checkClosed();
-    return this._has(subject, predicate, object);
+    return this._has(...this._pattern(subject, predicate, object));
   }
 
   async count(subject, predicate, object) {
     this._checkClosed();
-    return this._count(subject, predicate, object);
+    return this._count(...this._pattern(subject, predicate, object));
+  }
+
+  _pattern(subject, predicate, object) {
+    return [normalizeTerm(subject, 'subject', true), normalizeTerm(predicate, 'predicate', true), normalizeTerm(object, 'object', true)];
   }
 
   async clear() {

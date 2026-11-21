@@ -25,7 +25,7 @@ const graph = client.getGraph();
 await graph.add(
   'http://example.org/alice',
   'http://xmlns.com/foaf/0.1/name',
-  'Alice'
+  '"Alice"'
 );
 
 // Find triples (async, returns a Cursor)
@@ -38,9 +38,18 @@ for await (const triple of cursor) {
 await graph.remove(
   'http://example.org/alice',
   'http://xmlns.com/foaf/0.1/name',
-  'Alice'
+  '"Alice"'
 );
 ```
+
+## String terms
+
+Follow the [core string-term contract](../core/README.md#string-terms): absolute
+IRIs, quoted literal objects, lowercase language tags and canonical plain
+xsd:string literals. Results retain literal quotes and typed lexical values.
+Blank-node labels are graph-scoped, not globally portable. Validation uses
+dependency-free core code; memory depends only on the core workspace, with no
+external runtime dependencies.
 
 ## URL Scheme
 

@@ -10,6 +10,7 @@
       "import": "./index.js",
       "default": "./index.js"
     },
+    "./internal/string-term": "./StringTerm.js",
     "./test/driverCompliance.js": "./test/driverCompliance.js"
   },
   "publishConfig": {

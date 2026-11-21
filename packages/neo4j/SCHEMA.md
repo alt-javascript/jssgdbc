@@ -77,16 +77,15 @@ normalize to `''` (the default graph); all other graph names must be strings.
 `''` is the default, not a distinct named graph. Named graphs use exact strings;
 identical terms and blank-node identifiers in different graphs are separate nodes.
 
-The shared classification rule is deliberately not an RDF parser:
-
-- Strings starting with either a double quote (`"`) or single quote (`'`) have kind `literal`.
-- Strings starting with `_:` have kind `blank`.
-- All other strings have kind `iri`, including bare tokens, bracketed IRIs and `''`.
-
-Every string is kept exactly, including quotes, escapes, language/datatype suffixes,
-whitespace and incomplete literal spellings. Bare `urn:x` and `<urn:x>` differ.
-Subjects allow `iri` and `blank`; predicates only `iri`; objects allow all kinds.
-Literal spelling does not undergo language, datatype or Unicode normalization.
+Terms follow the [core string contract](../core/README.md#string-terms).
+Absolute IRIs and their bracketed forms canonicalize to the same unbracketed
+value. Valid double-quoted literals have kind `literal`, valid `_:` labels have
+kind `blank`, and IRIs have kind `iri`. Subjects allow IRIs/blank nodes;
+predicates require IRIs. Single-quoted, empty, bare and malformed terms reject.
+Equivalent escapes canonicalize, language tags lowercase, and xsd:string becomes
+plain quoted syntax. Typed lexical values remain strings, never coerced numbers.
+Blank labels are graph-scoped and are not globally portable identifiers.
+Experimental legacy noncanonical stored data is not migrated by this change.
 
 ## Insertion
 
@@ -115,7 +114,7 @@ Missing/null/undefined add terms, non-string concrete values (including boxed
 strings), literal subjects and blank/literal predicates throw synchronous
 `TypeError`s. Messages identify the operation, role and one-based argument
 position without echoing input, e.g. `buildAdd: subject (argument 2) must be a string`.
-Values are never coerced. Empty strings are concrete values, not missing terms.
+Values are never coerced. Empty strings are rejected, not treated as wildcards.
 
 ### Transactional insertion lock
 
@@ -146,7 +145,7 @@ Existing duplicate relationships are not repaired.
 
 For `buildFind`, `buildHas`, `buildCount` and `buildRemove`, null, undefined and
 omitted SPO arguments are wildcards independently in each position. Empty strings
-remain concrete filters. Concrete values reuse insertion's classification and
+are rejected. Concrete values reuse insertion's classification and
 validation, with the invoked method name in each error. Graph validation is the
 same for every method, including `buildClear`.
 
@@ -206,7 +205,7 @@ concurrent inserts on the pinned fixture, as recorded below. Node uniqueness
 alone is not a relationship uniqueness guarantee. This proof does not cover
 arbitrary workloads or server versions, and streaming is not supported.
 
-Building performs fixed prefix checks and allocates a bounded number of objects;
+Building validates/canonicalizes string terms and allocates a bounded number of objects;
 text handling and transport serialization are at most linear in input size.
 The builder has no I/O, graph scan, cache, batch accumulation or interpolation.
 At 10x caller volume, allocation/GC and retained parameter payloads are the local
@@ -215,6 +214,9 @@ buffer all matching rows; there is no pagination or backpressure. At 10x write
 concurrency, hot-subject lock contention or connection pool acquisition can become
 the first bottleneck. Timeouts/retry budgets bound individual waits, not memory.
 Orphan nodes accumulate on remove/clear; storage reclamation is not implemented.
+
+The historical live evidence below predates M005 term validation. Current M005
+term behavior has deterministic offline proof only; fresh live proof is pending S03.
 
 ## Disposable live fixture
 

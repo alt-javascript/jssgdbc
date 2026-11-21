@@ -115,8 +115,8 @@ describe('DriverManager dispatch', () => {
 describe('Cursor iteration', () => {
   it('constructs with triples array', () => {
     const triples = [
-      { s: 's1', p: 'p1', o: 'o1' },
-      { s: 's2', p: 'p2', o: 'o2' }
+      { s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' },
+      { s: 'urn:s2', p: 'urn:p2', o: 'urn:o2' }
     ];
     const cursor = new Cursor(triples);
     expect(cursor).to.be.instanceof(Cursor);
@@ -124,8 +124,8 @@ describe('Cursor iteration', () => {
 
   it('next() returns true for each triple, then false', async () => {
     const triples = [
-      { s: 's1', p: 'p1', o: 'o1' },
-      { s: 's2', p: 'p2', o: 'o2' }
+      { s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' },
+      { s: 'urn:s2', p: 'urn:p2', o: 'urn:o2' }
     ];
     const cursor = new Cursor(triples);
 
@@ -135,7 +135,7 @@ describe('Cursor iteration', () => {
   });
 
   it('getTriple() returns shallow copy of current item', async () => {
-    const triples = [{ s: 's1', p: 'p1', o: 'o1' }];
+    const triples = [{ s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' }];
     const cursor = new Cursor(triples);
 
     await cursor.next();
@@ -147,8 +147,8 @@ describe('Cursor iteration', () => {
 
   it('getTriples() returns all as shallow copies', () => {
     const triples = [
-      { s: 's1', p: 'p1', o: 'o1' },
-      { s: 's2', p: 'p2', o: 'o2' }
+      { s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' },
+      { s: 'urn:s2', p: 'urn:p2', o: 'urn:o2' }
     ];
     const cursor = new Cursor(triples);
 
@@ -162,8 +162,8 @@ describe('Cursor iteration', () => {
 
   it('async iterator yields all triples', async () => {
     const triples = [
-      { s: 's1', p: 'p1', o: 'o1' },
-      { s: 's2', p: 'p2', o: 'o2' }
+      { s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' },
+      { s: 'urn:s2', p: 'urn:p2', o: 'urn:o2' }
     ];
     const cursor = new Cursor(triples);
 
@@ -191,7 +191,7 @@ describe('Cursor iteration', () => {
   });
 
   it('next() throws after close()', async () => {
-    const cursor = new Cursor([{ s: 's1', p: 'p1', o: 'o1' }]);
+    const cursor = new Cursor([{ s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' }]);
     cursor.close();
 
     try {
@@ -203,7 +203,7 @@ describe('Cursor iteration', () => {
   });
 
   it('getTriple() throws when cursor not positioned', async () => {
-    const cursor = new Cursor([{ s: 's1', p: 'p1', o: 'o1' }]);
+    const cursor = new Cursor([{ s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' }]);
 
     try {
       cursor.getTriple();
@@ -214,7 +214,7 @@ describe('Cursor iteration', () => {
   });
 
   it('getTriples() throws after close()', () => {
-    const cursor = new Cursor([{ s: 's1', p: 'p1', o: 'o1' }]);
+    const cursor = new Cursor([{ s: 'urn:s1', p: 'urn:p1', o: 'urn:o1' }]);
     cursor.close();
 
     try {
@@ -231,7 +231,7 @@ describe('Graph abstract stubs', () => {
     const graph = new Graph(null, 'test');
 
     try {
-      await graph.add('s', 'p', 'o');
+      await graph.add('urn:s', 'urn:p', 'urn:o');
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -242,7 +242,7 @@ describe('Graph abstract stubs', () => {
     const graph = new Graph(null, 'test');
 
     try {
-      await graph.remove('s', 'p', 'o');
+      await graph.remove('urn:s', 'urn:p', 'urn:o');
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -253,7 +253,7 @@ describe('Graph abstract stubs', () => {
     const graph = new Graph(null, 'test');
 
     try {
-      await graph.find('s', 'p', 'o');
+      await graph.find('urn:s', 'urn:p', 'urn:o');
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -264,7 +264,7 @@ describe('Graph abstract stubs', () => {
     const graph = new Graph(null, 'test');
 
     try {
-      await graph.has('s', 'p', 'o');
+      await graph.has('urn:s', 'urn:p', 'urn:o');
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -275,7 +275,7 @@ describe('Graph abstract stubs', () => {
     const graph = new Graph(null, 'test');
 
     try {
-      await graph.count('s', 'p', 'o');
+      await graph.count('urn:s', 'urn:p', 'urn:o');
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -298,7 +298,7 @@ describe('Graph abstract stubs', () => {
     graph.close();
 
     try {
-      await graph.add('s', 'p', 'o');
+      await graph.add('urn:s', 'urn:p', 'urn:o');
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(Error);

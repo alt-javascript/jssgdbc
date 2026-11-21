@@ -6,13 +6,13 @@ describe('SparqlBuilder', () => {
   describe('complete statement contracts', () => {
     const compact = (query) => query.replace(/\s+/g, ' ').trim();
     const patterns = [
-      [['s', 'p', 'o'], '<s> <p> <o> .'],
-      [[null, 'p', 'o'], '?s <p> <o> .'],
-      [['s', null, 'o'], '<s> ?p <o> .'],
-      [['s', 'p', null], '<s> <p> ?o .'],
-      [[null, null, 'o'], '?s ?p <o> .'],
-      [[null, 'p', null], '?s <p> ?o .'],
-      [['s', null, null], '<s> ?p ?o .'],
+      [['urn:s', 'urn:p', 'urn:o'], '<urn:s> <urn:p> <urn:o> .'],
+      [[null, 'urn:p', 'urn:o'], '?s <urn:p> <urn:o> .'],
+      [['urn:s', null, 'urn:o'], '<urn:s> ?p <urn:o> .'],
+      [['urn:s', 'urn:p', null], '<urn:s> <urn:p> ?o .'],
+      [[null, null, 'urn:o'], '?s ?p <urn:o> .'],
+      [[null, 'urn:p', null], '?s <urn:p> ?o .'],
+      [['urn:s', null, null], '<urn:s> ?p ?o .'],
       [[null, null, null], '?s ?p ?o .']
     ];
 
@@ -42,13 +42,13 @@ describe('SparqlBuilder', () => {
         }
       }
       it(`complete INSERT DATA in ${graph || 'default graph'}`, () => {
-        expect(compact(SparqlBuilder.buildInsertData(graph, 's', 'p', 'o')))
-          .to.equal(`INSERT DATA { ${wrap('<s> <p> <o> .')} }`);
+        expect(compact(SparqlBuilder.buildInsertData(graph, 'urn:s', 'urn:p', 'urn:o')))
+          .to.equal(`INSERT DATA { ${wrap('<urn:s> <urn:p> <urn:o> .')} }`);
       });
       for (const position of [0, 1, 2]) {
         for (const wildcard of [null, undefined]) {
           it(`rejects INSERT wildcard ${String(wildcard)} at position ${position} in ${graph || 'default graph'}`, () => {
-            const terms = ['s', 'p', 'o'];
+            const terms = ['urn:s', 'urn:p', 'urn:o'];
             terms[position] = wildcard;
             expect(() => SparqlBuilder.buildInsertData(graph, ...terms))
               .to.throw('INSERT DATA requires bound subject, predicate, and object');
@@ -448,14 +448,12 @@ describe('SparqlBuilder', () => {
   });
 
   describe('Edge cases and boundary conditions', () => {
-    it('empty string as term is not null and gets wrapped', () => {
-      const term = SparqlBuilder.formatTerm('', 'subject');
-      expect(term).to.equal('<>');
+    it('rejects empty string terms', () => {
+      expect(() => SparqlBuilder.formatTerm('', 'subject')).to.throw(TypeError);
     });
 
-    it('numeric value is converted to string', () => {
-      const term = SparqlBuilder.formatTerm(123, 'object');
-      expect(term).to.equal('123');
+    it('rejects numeric values rather than coercing lexical identity', () => {
+      expect(() => SparqlBuilder.formatTerm(123, 'object')).to.throw(TypeError);
     });
 
     it('complex URI with query parameters', () => {

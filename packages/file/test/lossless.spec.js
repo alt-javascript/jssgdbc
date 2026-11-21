@@ -1,6 +1,75 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { DriverManager, FileDriver } from '@alt-javascript/jssgdbc-file';
 import { NTriplesParser as P } from '../NTriplesParser.js';
 import { NTriplesSerializer as S } from '../NTriplesSerializer.js';
+
+describe('Public file graph round trips', () => {
+  it('rejects invalid input before I/O and propagates malformed-file/read/write failures', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jssgdbc-failure-'));
+    const drivers = DriverManager.getDrivers();
+    let client;
+    try {
+      DriverManager.clear();
+      DriverManager.registerDriver(new FileDriver());
+      const url = `jssgdbc:file:${directory}`;
+      client = await DriverManager.getClient(url);
+      await assert.rejects(client.getGraph().add('urn:s', 'urn:p', 'bare'), /object/);
+      assert.deepEqual(await fs.readdir(directory), []);
+      const file = path.join(directory, 'default.nt');
+      await fs.writeFile(file, '<urn:s> <urn:p> "unfinished .');
+      await assert.rejects(client.getGraph().count(), /line/i);
+      await client.close();
+      await fs.rm(file);
+      await fs.mkdir(file);
+      client = await DriverManager.getClient(url);
+      await assert.rejects(client.getGraph().count(), { code: 'EISDIR' });
+      await client.close();
+      await fs.rm(file, { recursive: true });
+      client = await DriverManager.getClient(url);
+      assert.equal(await client.getGraph().count(), 0);
+      await fs.mkdir(file);
+      await assert.rejects(client.getGraph().add('urn:s', 'urn:p', '"value"'), { code: 'EISDIR' });
+    } finally {
+      await client?.close();
+      DriverManager.clear();
+      for (const driver of drivers) DriverManager.registerDriver(driver);
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves distinct term identities and lexical content after close/reopen', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jssgdbc-terms-'));
+    const drivers = DriverManager.getDrivers();
+    const objects = ['urn:o', '"urn:o"', '"mail@example.org^^type"', String.raw`"quote \" slash \\ 雪😀\n\t"`,
+      '"001"^^<http://www.w3.org/2001/XMLSchema#integer>', '"bonjour"@fr-ca', '"text"', '_:local'];
+    let client;
+    try {
+      DriverManager.clear();
+      DriverManager.registerDriver(new FileDriver());
+      const url = `jssgdbc:file:${directory}`;
+      client = await DriverManager.getClient(url);
+      for (const object of objects) await client.getGraph().add('<urn:s>', '<urn:p>', object);
+      await client.close();
+      client = await DriverManager.getClient(url);
+      const graph = client.getGraph();
+      assert.deepEqual((await graph.find()).getTriples().map(t => t.object), objects);
+      for (const object of objects) assert.equal(await graph.count('urn:s', 'urn:p', object), 1);
+      await graph.remove(null, null, '"urn:o"');
+      assert.equal(await graph.has(null, null, 'urn:o'), true);
+      await client.close();
+      client = await DriverManager.getClient(url);
+      assert.equal(await client.getGraph().has(null, null, '"urn:o"'), false);
+    } finally {
+      await client?.close();
+      DriverManager.clear();
+      for (const driver of drivers) DriverManager.registerDriver(driver);
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('Lossless string contract: strict file codec', () => {
   const triple = { subject: '<urn:s>', predicate: '<urn:p>', object: '"value"' };

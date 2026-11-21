@@ -36,6 +36,30 @@ const graph = client.getGraph();
 // ... use graph
 ```
 
+## String terms
+
+Use absolute IRI strings (`urn:s`, `https://example.org/s`) or bracketed
+N-Triples IRIs (`<urn:s>`). Results return unbracketed IRIs. Literal objects
+must be double-quoted N-Triples strings, e.g. `'"text"'`, `'"hello"@en'`, or
+`'"001"^^<http://www.w3.org/2001/XMLSchema#integer>'`. Never pass bare text
+as a literal. `urn:o` and `"urn:o"` remain distinct RDF terms.
+
+Subjects allow IRIs or `_:label` blank nodes; predicates require IRIs; objects
+also allow literals. Malformed terms and invalid positions reject with a
+position-bearing TypeError before adapter I/O. Add requires three bound terms;
+null/undefined are wildcards only in find/has/count/remove patterns.
+
+Results canonicalize equivalent escapes, language tags to lowercase, and
+xsd:string literals to plain quoted literals. Typed lexical content (including
+leading zeroes) is never coerced to JavaScript numbers or booleans. This is a
+string API, not a public RDF/JS term-object API. Use maintained Node.js 22+.
+
+Blank labels are scoped to a graph/dataset, not global identifiers. Local file
+round trips preserve labels, but separate imports and remote requests do not
+promise stable labels or portable blank-node lookup/removal. In SPARQL a blank
+label in a query pattern is existential, not a persistent node identifier.
+Use IRIs when identity must survive independent remote operations.
+
 ## Compliance Testing
 
 Implement the `Driver` interface and validate it against the jssgdbc compliance harness:

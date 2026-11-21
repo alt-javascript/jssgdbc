@@ -1,3 +1,4 @@
+import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
 import { Graph, Cursor } from '@alt-javascript/jssgdbc-core';
 import { SparqlBuilder } from './SparqlBuilder.js';
 
@@ -26,7 +27,14 @@ function decode(term, operation) {
     return escapes[char] ?? `\\u${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
   });
   // Language takes precedence over the rdf:langString datatype supplied by some endpoints.
-  return `"${escaped}"${language !== undefined ? `@${language}` : datatype !== undefined ? `^^<${datatype}>` : ''}`;
+  try {
+    return normalizeTerm(`"${escaped}"${language !== undefined ? `@${language}` : datatype !== undefined ? `^^<${datatype}>` : ''}`);
+  } catch { throw invalid(operation); }
+}
+
+function decodePosition(term, position) {
+  try { return normalizeTerm(decode(term, 'SELECT'), position); }
+  catch { throw invalid('SELECT'); }
 }
 
 /** Buffered results: memory grows with response rows; no pagination or streaming. */
@@ -45,7 +53,7 @@ export class SparqlGraph extends Graph {
       // Validate even unexpected/bound-position bindings rather than silently discarding unsupported terms.
       for (const term of Object.values(row)) decode(term, 'SELECT');
       return Object.fromEntries(positions.map((position, i) => [position,
-        wildcard(pattern[i]) ? decode(row[variables[i]], 'SELECT') : pattern[i]]));
+        wildcard(pattern[i]) ? decodePosition(row[variables[i]], position) : pattern[i]]));
     });
     return new Cursor(triples);
   }
