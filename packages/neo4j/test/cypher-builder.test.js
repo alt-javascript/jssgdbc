@@ -44,6 +44,112 @@ test('hostile strings in every position remain parameters, never Cypher text', (
   }
 });
 
+const match = 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})';
+const endings = {
+  buildFind: 'RETURN s.value AS subject, r.predicate AS predicate, o.value AS object',
+  buildHas: 'RETURN count(r) > 0 AS exists',
+  buildCount: 'RETURN count(r) AS count',
+  buildRemove: 'DELETE r',
+};
+// Explicit fixtures independent of the builder's filter-generation loop.
+const patterns = [
+  [[null, null, null], '', {}],
+  [['s', null, null], 's.kind = $subjectKind AND s.value = $subject', { subjectKind: 'iri', subject: 's' }],
+  [[null, 'p', null], 'r.predicate = $predicate', { predicate: 'p' }],
+  [[null, null, 'o'], 'o.kind = $objectKind AND o.value = $object', { objectKind: 'iri', object: 'o' }],
+  [['s', 'p', null], 's.kind = $subjectKind AND s.value = $subject AND r.predicate = $predicate', { subjectKind: 'iri', subject: 's', predicate: 'p' }],
+  [['s', null, 'o'], 's.kind = $subjectKind AND s.value = $subject AND o.kind = $objectKind AND o.value = $object', { subjectKind: 'iri', subject: 's', objectKind: 'iri', object: 'o' }],
+  [[null, 'p', 'o'], 'r.predicate = $predicate AND o.kind = $objectKind AND o.value = $object', { predicate: 'p', objectKind: 'iri', object: 'o' }],
+  [['s', 'p', 'o'], 's.kind = $subjectKind AND s.value = $subject AND r.predicate = $predicate AND o.kind = $objectKind AND o.value = $object', { subjectKind: 'iri', subject: 's', predicate: 'p', objectKind: 'iri', object: 'o' }],
+];
+for (const [method, ending] of Object.entries(endings)) {
+  for (const graph of [undefined, null, '', 'named']) {
+    for (const [terms, where, params] of patterns) {
+      test(`${method} wildcard fixture ${JSON.stringify([graph, ...terms])}`, () => {
+        const expected = { query: match + (where ? `\nWHERE ${where}` : '') + `\n${ending}`, params: { graph: graph ?? '', ...params } };
+        assert.deepEqual(CypherBuilder[method](graph, ...terms), expected);
+        assert.deepEqual(CypherBuilder[method](graph, ...terms.map(v => v === null ? undefined : v)), expected);
+      });
+    }
+  }
+
+  test(`${method} exact term kinds, empty filters and distinct spellings`, () => {
+    for (const [subject, subjectKind] of subjects) {
+      for (const [object, objectKind] of objects) {
+        assert.deepEqual(CypherBuilder[method]('', subject, '', object), {
+          query: `${match}\nWHERE ${patterns[7][1]}\n${ending}`,
+          params: { graph: '', subjectKind, subject, predicate: '', objectKind, object },
+        });
+      }
+    }
+    assert.notDeepEqual(CypherBuilder[method]('', 's', 'p', 'o').params,
+      CypherBuilder[method]('', '<s>', '<p>', '<o>').params);
+    assert.deepEqual(CypherBuilder[method](), { query: `${match}\n${ending}`, params: { graph: '' } });
+  });
+
+  test(`${method} rejects invalid concrete arguments and kinds with contextual redacted errors`, () => {
+    for (let i = 0; i < 4; i++) {
+      for (const value of [0, false, NaN, 1n, Symbol('secret'), [], {}, new String('secret'), { toString() { throw Error('coercion'); } }]) {
+        const args = ['g', 's', 'p', 'o'];
+        args[i] = value;
+        assert.throws(() => CypherBuilder[method](...args), {
+          name: 'TypeError', message: `${method}: ${positions[i]} (argument ${i + 1}) must be a string`,
+        });
+      }
+    }
+    for (const value of ['"secret"', "'secret'"]) {
+      assert.throws(() => CypherBuilder[method]('', value), {
+        name: 'TypeError', message: `${method}: subject (argument 2) must be an IRI or blank node`,
+      });
+    }
+    for (const value of ['"secret"', "'secret'", '_:secret']) {
+      assert.throws(() => CypherBuilder[method]('', null, value), {
+        name: 'TypeError', message: `${method}: predicate (argument 3) must be an IRI`,
+      });
+    }
+  });
+}
+
+for (const method of [...Object.keys(endings), 'buildClear']) {
+  test(`${method} fixed connected scope, safe deletion, hostile values and fresh params`, () => {
+    const base = CypherBuilder[method]('g', 's', 'p', 'o');
+    assert.ok(base.query.startsWith(match));
+    assert.equal((base.query.match(/graph: \$graph/g) ?? []).length, 2);
+    assert.doesNotMatch(base.query, /DETACH|DELETE\s+[so]|\*|MATCH[^\n]*,\s*\(/);
+    if (method === 'buildRemove' || method === 'buildClear') assert.ok(base.query.endsWith('\nDELETE r'));
+    for (const payload of ['x`}) MATCH (n) DETACH DELETE n //', 'x\nRETURN 42; //', 'x\\"\u0000雪', 'x'.repeat(100000)]) {
+      for (let i = 0; i < (method === 'buildClear' ? 1 : 4); i++) {
+        const args = ['g', 's', 'p', 'o'];
+        args[i] = payload;
+        Object.freeze(args);
+        const result = CypherBuilder[method](...args);
+        assert.equal(result.query, base.query);
+        assert.equal(result.query.includes(payload), false);
+        assert.equal(result.params[['graph', 'subject', 'predicate', 'object'][i]], payload);
+        const again = CypherBuilder[method](...args);
+        assert.deepEqual(result, again);
+        assert.notEqual(result, again);
+        assert.notEqual(result.params, again.params);
+        result.params.graph = 'changed';
+        assert.equal(again.params.graph, args[0]);
+        assert.equal(args[i], payload);
+      }
+    }
+  });
+}
+
+test('buildClear only deletes scoped relationships, retaining orphan nodes', () => {
+  for (const graph of [undefined, null, '', 'named']) {
+    assert.deepEqual(CypherBuilder.buildClear(graph), { query: `${match}\nDELETE r`, params: { graph: graph ?? '' } });
+    assert.deepEqual(CypherBuilder.buildClear(graph), CypherBuilder.buildRemove(graph));
+  }
+  for (const graph of [0, false, [], {}, Symbol('secret'), new String('secret')]) {
+    assert.throws(() => CypherBuilder.buildClear(graph), {
+      name: 'TypeError', message: 'buildClear: graphName (argument 1) must be a string',
+    });
+  }
+});
+
 const positions = ['graphName', 'subject', 'predicate', 'object'];
 for (let position = 0; position < 4; position++) {
   test(`buildAdd rejects invalid ${positions[position]} without coercion or value disclosure`, () => {

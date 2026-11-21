@@ -27,8 +27,57 @@ function encodeTerm(value, operation, position, index) {
   return { kind, value };
 }
 
+const MATCH_QUERY = 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})';
+
+function buildPattern(operation, graphName, subject, predicate, object, ending) {
+  const params = { graph: normalizeGraph(graphName, operation) };
+  const filters = [];
+  for (const [value, position, index, binding] of [
+    [subject, 'subject', 2, 's'],
+    [predicate, 'predicate', 3, 'r'],
+    [object, 'object', 4, 'o'],
+  ]) {
+    if (value === null || value === undefined) continue;
+    const term = encodeTerm(value, operation, position, index);
+    if (position === 'predicate') {
+      filters.push('r.predicate = $predicate');
+    } else {
+      params[`${position}Kind`] = term.kind;
+      filters.push(`${binding}.kind = $${position}Kind`, `${binding}.value = $${position}`);
+    }
+    params[position] = term.value;
+  }
+  return {
+    query: MATCH_QUERY + (filters.length ? `\nWHERE ${filters.join(' AND ')}` : '') + `\n${ending}`,
+    params,
+  };
+}
+
 /** Pure, parameterized statements; transport and result decoding belong to the adapter. */
 export class CypherBuilder {
+  static buildFind(graphName, subject, predicate, object) {
+    return buildPattern('buildFind', graphName, subject, predicate, object,
+      'RETURN s.value AS subject, r.predicate AS predicate, o.value AS object');
+  }
+
+  static buildHas(graphName, subject, predicate, object) {
+    return buildPattern('buildHas', graphName, subject, predicate, object,
+      'RETURN count(r) > 0 AS exists');
+  }
+
+  static buildCount(graphName, subject, predicate, object) {
+    return buildPattern('buildCount', graphName, subject, predicate, object,
+      'RETURN count(r) AS count');
+  }
+
+  static buildRemove(graphName, subject, predicate, object) {
+    return buildPattern('buildRemove', graphName, subject, predicate, object, 'DELETE r');
+  }
+
+  static buildClear(graphName) {
+    return buildPattern('buildClear', graphName, null, null, null, 'DELETE r');
+  }
+
   static buildAdd(graphName, subject, predicate, object) {
     const operation = 'buildAdd';
     const graph = normalizeGraph(graphName, operation);

@@ -2,7 +2,14 @@
 
 This package exports the dependency-free `CypherBuilder`. It builds statements;
 no connection, driver registration, filesystem access or database execution occurs.
-The current implementation provides `static buildAdd(graphName, subject, predicate, object)`.
+All public methods are static and return fresh `{query, params}` objects:
+
+- `buildAdd(graphName, subject, predicate, object)`
+- `buildFind(graphName, subject, predicate, object)`
+- `buildHas(graphName, subject, predicate, object)`
+- `buildCount(graphName, subject, predicate, object)`
+- `buildRemove(graphName, subject, predicate, object)`
+- `buildClear(graphName)`
 
 ## Term and triple identity
 
@@ -57,16 +64,58 @@ strings), literal subjects and blank/literal predicates throw synchronous
 position without echoing input, e.g. `buildAdd: subject (argument 2) must be a string`.
 Values are never coerced. Empty strings are concrete values, not missing terms.
 
-## Reserved read contract for S02 composition
+## Pattern operations and result aliases
 
-T02 will add `buildFind`, `buildHas`, `buildCount`, `buildRemove` with the same
-four arguments, plus `buildClear(graphName)`. Null/undefined SPO values will be
-wildcards for those pattern operations only. Every query must scope both endpoints.
-Fixed result aliases are `subject`, `predicate`, `object` for exact string values
-from find; `exists` for one boolean from has; and `count` for one aggregate count,
-including zero matches. Neo4j integer conversion belongs to the S02 adapter.
-No ordering guarantee is planned. Removal/clear will delete only matching
-relationships, intentionally retaining orphan term nodes.
+For `buildFind`, `buildHas`, `buildCount` and `buildRemove`, null, undefined and
+omitted SPO arguments are wildcards independently in each position. Empty strings
+remain concrete filters. Concrete values reuse insertion's classification and
+validation, with the invoked method name in each error. Graph validation is the
+same for every method, including `buildClear`.
+
+Every pattern statement starts with this connected, fixed-label/type match:
+
+```cypher
+MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})
+```
+
+Concrete subjects append `s.kind = $subjectKind AND s.value = $subject`;
+predicates append `r.predicate = $predicate`; objects append
+`o.kind = $objectKind AND o.value = $object`. Filters appear in SPO order in one
+`WHERE` clause joined by `AND`; a fully wildcard pattern has no `WHERE` clause.
+Only concrete filters contribute parameters; `graph` is always present.
+
+The final clause is fixed by method:
+
+| Method | Final clause | Row contract |
+| --- | --- | --- |
+| `buildFind` | `RETURN s.value AS subject, r.predicate AS predicate, o.value AS object` | Exact strings, no internal entities; no ordering guarantee |
+| `buildHas` | `RETURN count(r) > 0 AS exists` | One boolean, including false for no matches |
+| `buildCount` | `RETURN count(r) AS count` | One aggregate count, including zero for no matches |
+| `buildRemove` | `DELETE r` | No return-row contract |
+| `buildClear` | `DELETE r` | Same statement as fully wildcard remove |
+
+Neo4j integer conversion of `count` belongs to the S02 adapter. Aggregations have
+no grouping keys so the intended contract includes a row for zero matches; this
+still needs live execution verification in S02.
+
+For example, `CypherBuilder.buildFind('named', null, 'urn:p', '"hello"@en')`
+returns:
+
+```js
+{
+  query: 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})\n'
+    + 'WHERE r.predicate = $predicate AND o.kind = $objectKind AND o.value = $object\n'
+    + 'RETURN s.value AS subject, r.predicate AS predicate, o.value AS object',
+  params: { graph: 'named', predicate: 'urn:p', objectKind: 'literal', object: '"hello"@en' }
+}
+```
+
+`CypherBuilder.buildClear()` returns the connected match followed by `DELETE r`
+with `{graph: ''}`. Remove and clear delete only matched `JSSGDBC_TRIPLE`
+relationships whose endpoints both belong to the requested graph. They never
+use `DETACH DELETE`, delete nodes, traverse variable-length paths, or target
+unrelated application labels/types. Orphan terms are intentionally retained;
+node cleanup is outside this contract.
 
 ## Limits of this proof
 
