@@ -11,6 +11,47 @@ All public methods are static and return fresh `{query, params}` objects:
 - `buildRemove(graphName, subject, predicate, object)`
 - `buildClear(graphName)`
 
+## Transport contract (S02/T01)
+
+The internal `Neo4jDriver`/`Neo4jClient` transport is implemented; public graph
+composition and registration follow in T02. Connect accepts
+`jssgdbc:neo4j:<native-uri>` with `bolt`, `bolt+s`, `bolt+ssc`, `neo4j`,
+`neo4j+s`, or `neo4j+ssc`. Embedded userinfo, fragments and non-root paths
+are rejected. Credentials belong only in properties, never in the URL.
+
+Properties must be a plain object with only these optional keys:
+
+| Property | Type / default |
+| --- | --- |
+| `username`, `password` | Nonempty strings, supplied together; omitted means native unauthenticated connection |
+| `database` | Nonblank string; omitted uses the server default |
+| `timeoutMs` | Integer 1–2147483647; default 30000; transaction timeout and native retry budget |
+| `connectionTimeoutMs` | Integer 1–2147483647; default 10000; connection and pool acquisition timeout |
+
+Connect verifies connectivity and installs the idempotent composite uniqueness
+constraint `jssgdbc_term_identity` on `JssgdbcTerm(graph, kind, value)` before
+returning. Initialization failure closes the owned driver. Constraint creation
+requires appropriate server permissions and compatible existing data.
+
+Each operation owns one session and uses a managed read/write transaction.
+Sessions close in `finally`; the primary operation failure wins over cleanup
+failure. Native retries can repeat callbacks; callbacks must have no external
+side effects. Records are buffered before the transaction returns; decoding is
+performed by the graph layer after session cleanup. There is no streaming,
+backpressure, caller-owned transaction scope or result-size cap. Memory is
+O(returned rows and their payloads); at 10x result volume heap/GC may saturate
+before the server. Concurrent operations can saturate the pool (100 connections
+per server) or server locks. Acquisition timeouts and native transaction timeouts
+limit waiting/work, not result memory, nor a strict end-to-end wall-clock deadline
+across retries. Callers must limit concurrent work and broad queries.
+
+`close()` marks the client closed immediately and returns the same cleanup promise
+on repeated calls, including when cleanup rejects. Await it. Errors expose only
+operation and a recognized-format native driver code; native messages, causes,
+credentials and parameters are not retained in the exposed error. No query or
+credential logging is configured. Run `npm test --workspace=packages/neo4j` for
+offline transport and mapper diagnostics. Live service proof remains T03.
+
 ## Term and triple identity
 
 Nodes have the fixed label `JssgdbcTerm` and string properties `graph`, `kind`,

@@ -23,7 +23,11 @@
   },
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/neo4j",
   "scripts": {
-    "test": "node --test test/cypher-builder.test.js"
+    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js"
+  },
+  "dependencies": {
+    "@alt-javascript/jssgdbc-core": "*",
+    "neo4j-driver": "^5.28.0"
   },
   "author": "Craig Parravicini",
   "contributors": ["Claude (Anthropic)"],
