@@ -1,7 +1,38 @@
 # JSSGDBC trajectory: ecosystem scan and proposed GSD milestones
 
 Date: 21 November 2026. Inspected implementation baseline: `84d5f2e`.
-Status: research and proposed roadmap; milestone IDs below are provisional until registered in the project's actual Open GSD state.
+Status: historical research and proposed roadmap, with a current implementation update below. The original scan and proposed milestone breakdown are preserved as history, not authoritative execution state.
+
+## Current experimental baseline (M005 implementation)
+
+The original scan below describes `84d5f2e`, not the current checkout. M005 implementation now provides a validated, lossless **string-term API**, strict N-Triples parsing/serialization, keyed file graph identities and awaited idempotent graph/client closure. Open clients reacquire fresh graph handles; closed clients remain terminal. Plain/xsd:string equivalence, lowercase language tags and typed lexical preservation are tested. This is not an RDF/JS term-object migration.
+
+Use [STRING-TERMS.md](../packages/core/test/STRING-TERMS.md) for exact grammar and blank-node boundaries, [CONFORMANCE.md](../packages/core/test/CONFORMANCE.md) for the portable matrix, backend versions, deadlines and ownership rules, and the [root README](../README.md) for local examples and connection schemes. File storage still requires a trusted directory and writer coordination, buffers/re-writes graphs in O(n), has no fsync guarantee, and does not migrate legacy files; see the [file README](../packages/file/README.md#known-limitations). Cursors and remote results remain buffered, not streaming or memory-bounded.
+
+Root and all five workspaces are now private experimental `0.0.0` packages. Offline safeguards test owned lock metadata, registration through public imports, side-effect declarations and rejecting publication hooks. These prevent accidents, not deliberate bypass: scripts can be disabled. No registry release, deployment or additional backend is delivered here.
+
+### Current verification workflow
+
+From the repository root with installed workspace dependencies, run these checks serially:
+
+```sh
+npm run test:packaging
+npm run test:docs
+node test/verify-quickstart.js
+node test/verify-file-quickstart.js
+npm test
+node --test scripts/conformance-runner.test.js
+npm run test:conformance
+npm run test:integration --workspace=packages/sparql
+```
+
+The aggregate executes memory/file shared compliance and disposable real Neo4j/Fuseki suites, including Neo4j's unchanged marked README examples. The standalone SPARQL command exercises its independent runner. Docker and Compose readiness are mandatory: unavailable infrastructure is failure, not a skip. Offline HTTP/native fixtures are not live backend proof. Use each run's reported runtime versions, phase outcomes and exact Compose project label to verify cleanup of containers, networks and volumes; never prune unrelated resources. Generated execution logs are evidence for that run, not source artifacts or a claim of vendor-wide compatibility.
+
+Use the installed **Open GSD** workflow and its database-backed state tools to inspect progress and reconcile requirements at closeout. Do not register M005 again from the historical proposal, edit generated projections, or infer milestone completion from this document. Requirement reconciliation and slice/milestone acceptance remain closeout prerequisites. The [original next-session prompt](../handoff/jssgdbc-next-session-prompt.md) and earlier handoff transcripts are historical context, not current execution instructions. Later milestone proposals below remain proposals, not shipped features.
+
+## Historical scan (baseline `84d5f2e`)
+
+Sections 1–5, including their present-tense findings, test counts, metadata and proposed slice assignments, refer to the original scan. Resolved defects remain recorded to explain why M005 was undertaken; current contracts above supersede those descriptions.
 
 ## Recommendation
 
@@ -171,8 +202,8 @@ Exit: a reproducible example cites its sources, preserves revisions and reports 
 
 Full property-graph abstraction, vector-search standardization, a bespoke query planner, autonomous ontology generation, Graphiti replacement, remote team coordination, EKS and publication. These need their own evidence and scope decisions.
 
-M005 is ready for detailed planning. M006–M009 express direction and should be replanned using findings from earlier milestones rather than frozen now.
+At the time of this scan, M005 was ready for detailed planning. M006–M009 expressed direction rather than a frozen plan; reassess them using delivered baseline findings and actual Open GSD state.
 
 ## 6. Practical next-session boundary
 
-Use [the next-session prompt](../handoff/jssgdbc-next-session-prompt.md) to register and execute M005 through the installed Open GSD workflow. Preserve the earlier airline-pilot handoff files. Do not treat the research roadmap as existing GSD state or import a different GSD workflow solely because it has similar command names.
+Follow the current verification workflow above and inspect the installed Open GSD state for the next action. Preserve [the historical next-session prompt](../handoff/jssgdbc-next-session-prompt.md) and earlier airline-pilot handoff files without rewriting their transcripts. Do not treat this research roadmap as existing GSD state or import a different GSD workflow solely because it has similar command names.
