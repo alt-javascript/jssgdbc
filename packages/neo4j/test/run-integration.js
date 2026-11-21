@@ -11,18 +11,21 @@ const cwd = fileURLToPath(new URL('..', import.meta.url));
 export function runIntegration({ spawn = spawnSync, report = console.error } = {}) {
   const project = `jssgdbc-test-${randomUUID()}`;
   const compose = ['compose', '-p', project, '-f', 'compose.test.yml'];
+  report(`Neo4j owned project ${project}`);
   function run(phase, command, args, timeout) {
+    const start = Date.now();
+    let ok = false;
     try {
       const result = spawn(command, args, {
         cwd, stdio: 'inherit', timeout, killSignal: 'SIGKILL',
         env: { ...process.env, JSSGDBC_DISPOSABLE_NEO4J: project },
       });
-      if (result && !result.error && result.status === 0) return true;
+      ok = !!result && !result.error && result.status === 0;
     } catch {
       // Never expose native error bodies or environment values.
     }
-    report(`Neo4j ${phase} failed`);
-    return false;
+    report(`Neo4j ${phase} ${ok ? 'passed' : 'failed'} (${Date.now() - start}ms)`);
+    return ok;
   }
   let passed = false;
   try {
@@ -37,6 +40,8 @@ export function runIntegration({ spawn = spawnSync, report = console.error } = {
     report('Neo4j suite setup failed');
   } finally {
     if (!run('fixture teardown', 'docker', [...compose, 'down', '--volumes', '--remove-orphans'], 60000)) passed = false;
+    if (!run('owned container removal', process.execPath, ['--input-type=module', '-e',
+      `import {spawnSync} from 'node:child_process'; const r=spawnSync('docker',['ps','-aq','--filter','label=com.docker.compose.project=${project}'],{encoding:'utf8',timeout:10000}); process.exitCode=r.error||r.status!==0||r.stdout.trim()?1:0;`], 15000)) passed = false;
   }
   return passed ? 0 : 1;
 }

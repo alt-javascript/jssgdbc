@@ -17,7 +17,9 @@ function exercise(failAt = -1, failure = { status: 1 }) {
     report: message => messages.push(message),
   });
   const first = calls[0];
-  const last = calls.at(-1);
+  const last = calls.at(-2);
+  assert.equal(calls.at(-1).command, process.execPath);
+  assert.ok(calls.at(-1).args.at(-1).includes(`label=com.docker.compose.project=${first.args[2]}`));
   assert.equal(first.command, 'docker');
   assert.equal(last.command, 'docker');
   assert.deepEqual(last.args.slice(0, 5), first.args.slice(0, 5));
@@ -34,8 +36,8 @@ function exercise(failAt = -1, failure = { status: 1 }) {
 test('successful startup, separate node and workspace Mocha suites, then scoped cleanup', () => {
   const { calls, messages, status } = exercise();
   assert.equal(status, 0);
-  assert.deepEqual(messages, []);
-  assert.equal(calls.length, 4);
+  assert.ok(messages.some(message => message.includes('owned container removal passed')));
+  assert.equal(calls.length, 5);
   assert.deepEqual(calls[1].args, ['--test', 'test/neo4j-integration.test.js', 'test/readme-integration.test.js']);
   assert.match(calls[2].args[0], /mocha\/bin\/mocha.js$/);
   assert.ok(calls[2].args.includes('--forbid-pending'));
@@ -46,16 +48,16 @@ test('successful startup, separate node and workspace Mocha suites, then scoped 
 test('startup failure skips suites but still tears down', () => {
   const result = exercise(0);
   assert.equal(result.status, 1);
-  assert.equal(result.calls.length, 2);
-  assert.match(result.messages[0], /startup\/readiness failed/);
+  assert.equal(result.calls.length, 3);
+  assert.ok(result.messages.some(message => /startup\/readiness failed/.test(message)));
 });
 
-for (const [index, phase] of [[1, 'node:test'], [2, 'Mocha compliance'], [3, 'fixture teardown']]) {
+for (const [index, phase] of [[1, 'node:test'], [2, 'Mocha compliance'], [3, 'fixture teardown'], [4, 'owned container removal']]) {
   test(`${phase} failure propagates nonzero and cleanup runs`, () => {
     const result = exercise(index);
     assert.equal(result.status, 1);
-    assert.equal(result.calls.length, 4);
-    assert.ok(result.messages[0].includes(phase));
+    assert.equal(result.calls.length, 5);
+    assert.ok(result.messages.some(message => message.includes(phase) && message.includes('failed')));
   });
 }
 
@@ -69,6 +71,6 @@ for (const failure of [
     // Explicit null exercises a missing result (undefined uses the helper default).
     const result = exercise(1, failure === undefined ? null : failure);
     assert.equal(result.status, 1);
-    assert.equal(result.calls.length, 4);
+    assert.equal(result.calls.length, 5);
   });
 }
