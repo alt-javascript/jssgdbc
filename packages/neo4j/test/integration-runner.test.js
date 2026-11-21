@@ -36,7 +36,7 @@ test('successful startup, separate node and workspace Mocha suites, then scoped 
   assert.equal(status, 0);
   assert.deepEqual(messages, []);
   assert.equal(calls.length, 4);
-  assert.equal(calls[1].args[0], '--test');
+  assert.deepEqual(calls[1].args, ['--test', 'test/neo4j-integration.test.js', 'test/readme-integration.test.js']);
   assert.match(calls[2].args[0], /mocha\/bin\/mocha.js$/);
   assert.ok(calls[2].args.includes('--forbid-pending'));
   assert.ok(calls[2].args.includes('--fail-zero'));

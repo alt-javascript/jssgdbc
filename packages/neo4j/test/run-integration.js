@@ -28,7 +28,7 @@ export function runIntegration({ spawn = spawnSync, report = console.error } = {
   try {
     if (run('fixture startup/readiness', 'docker', [...compose, 'up', '-d', '--wait', '--wait-timeout', '240'], 300000)) {
       const smoke = run('node:test suite', process.execPath,
-        ['--test', 'test/neo4j-integration.test.js'], 180000);
+        ['--test', 'test/neo4j-integration.test.js', 'test/readme-integration.test.js'], 180000);
       const compliance = run('Mocha compliance suite', process.execPath,
         [require.resolve('mocha/bin/mocha.js'), '--timeout', '30000', '--forbid-pending', '--fail-zero', 'test/compliance.spec.js'], 180000);
       passed = smoke && compliance;

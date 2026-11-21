@@ -225,7 +225,9 @@ npm run test:integration --workspace=packages/neo4j
 ```
 
 The command creates a uniquely named Compose project, waits for readiness, runs
-the live tests, and awaits teardown in `finally`, including after startup or test
+the node:test smoke and executable [README](README.md) examples, followed by the
+shared Mocha driver compliance suite in a separate process, and awaits teardown
+in `finally`, including after startup or test
 failure. Startup, test execution and teardown have subprocess timeouts; any failure
 returns nonzero. Docker and Compose must be installed and running, and port 17687
 must be free. Concurrent fixture runs on this fixed port are not supported; a port
@@ -249,9 +251,11 @@ application-data isolation and lifecycle. Twelve concurrent writes per case are
 bounded correctness checks, not throughput claims. Buffering and hot-subject
 contention limits above still apply.
 
-Cleanup in `finally` awaits driver closure and deletes only run-owned named
-graphs/default subject and sentinel nodes. Fixture teardown reclaims remaining
-orphan terms. The unavailable-endpoint case uses a freshly released loopback port
+Smoke cleanup in `finally` awaits driver closure and deletes only run-owned named
+graphs/default subject and sentinel nodes. README examples close their cursors,
+graphs and clients and remove their demo relationships. The subsequent compliance
+phase resets all `JssgdbcTerm` nodes before each client factory call, solely in this
+disposable fixture. Fixture teardown reclaims remaining orphan terms. The unavailable-endpoint case uses a freshly released loopback port
 and asserts bounded, redacted failure context. Offline malformed-row/integer tests
 remain necessary because normal servers do not produce those invalid records.
 
