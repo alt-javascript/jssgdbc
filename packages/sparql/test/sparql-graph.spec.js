@@ -100,6 +100,30 @@ describe('SparqlGraph', () => {
     assert.throws(() => cursor.getTriple(), /Cursor is closed/);
   });
 
+  it('clears an absent or already emptied named graph without CLEAR GRAPH errors', async () => {
+    const f = fixture('urn:clear:missing');
+    let updates = 0;
+    // Model a store that discards empty graphs and rejects CLEAR on absence.
+    f.client._update = async query => {
+      if (query.startsWith('CLEAR GRAPH')) throw new Error('No such graph');
+      assert.equal(query, B.buildDelete('urn:clear:missing', null, null, null));
+      updates++;
+    };
+    try {
+      await f.graph.clear();
+      await f.graph.clear();
+      assert.equal(updates, 2);
+    } finally { await f.client.close(); }
+  });
+
+  it('does not suppress named graph clear update failures', async () => {
+    const f = fixture('urn:clear:failure');
+    const failure = new Error('SPARQL update: HTTP 500 failure');
+    f.client._update = async () => { throw failure; };
+    try { await assert.rejects(f.graph.clear(), error => error === failure); }
+    finally { await f.client.close(); }
+  });
+
   it('handles empty results and detached core cursor lifecycle', async () => {
     const f = fixture();
     assert.equal(await (await f.graph.find()).next(), false);

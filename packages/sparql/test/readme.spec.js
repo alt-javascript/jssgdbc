@@ -108,7 +108,7 @@ describe('Executable SPARQL README examples', () => {
       ['POST', 'INSERT DATA', ''], ['POST', 'INSERT DATA', namedGraph],
       ['GET', 'SELECT', namedGraph], ['GET', 'ASK', namedGraph], ['GET', 'COUNT', namedGraph],
       ['POST', 'DELETE DATA', namedGraph], ['GET', 'ASK', namedGraph],
-      ['POST', 'INSERT DATA', namedGraph], ['POST', 'CLEAR', namedGraph],
+      ['POST', 'INSERT DATA', namedGraph], ['POST', 'DELETE PATTERN', namedGraph],
       ['GET', 'COUNT', namedGraph], ['GET', 'ASK', ''],
       ['POST', 'DELETE DATA', ''], ['GET', 'ASK', '']
     ]);

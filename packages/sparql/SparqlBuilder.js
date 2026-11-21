@@ -72,7 +72,10 @@ export class SparqlBuilder {
     if (!graphName || graphName === '') {
       return 'CLEAR DEFAULT';
     }
-    return `CLEAR GRAPH ${this.escapeIri(graphName)}`;
+    // Stores may discard empty named graphs. CLEAR GRAPH then fails for an
+    // absent graph (e.g. Fuseki), but Graph.clear() must be an idempotent no-op.
+    // A scoped DELETE matches nothing when absent without SILENT hiding errors.
+    return this.buildDelete(graphName, null, null, null);
   }
 
   static formatTerm(value, position) {

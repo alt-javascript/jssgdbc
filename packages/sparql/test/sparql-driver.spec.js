@@ -132,7 +132,7 @@ describe('SPARQL public driver HTTP composition', () => {
         [() => graph.add(s, p, o), `INSERT DATA {\n  ${wrap('<urn:subject> <urn:predicate> "hello" .')}\n}`],
         [() => graph.remove(s, p, o), `DELETE DATA {\n  ${wrap('<urn:subject> <urn:predicate> "hello" .')}\n}`],
         [() => graph.remove(s), `DELETE {\n  ${wrap('<urn:subject> ?p ?o .')}\n}\nWHERE {\n  ${wrap('<urn:subject> ?p ?o .')}\n}`],
-        [() => graph.clear(), name ? 'CLEAR GRAPH <urn:graph>' : 'CLEAR DEFAULT'],
+        [() => graph.clear(), name ? `DELETE {\n  ${wrap('?s ?p ?o .')}\n}\nWHERE {\n  ${wrap('?s ?p ?o .')}\n}` : 'CLEAR DEFAULT'],
       ];
       for (const [operation, text] of updates) {
         assert.equal(await operation(), undefined);

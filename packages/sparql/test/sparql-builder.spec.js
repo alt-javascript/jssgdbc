@@ -264,14 +264,16 @@ describe('SparqlBuilder', () => {
       expect(query).to.equal('CLEAR DEFAULT');
     });
 
-    it('named graph generates CLEAR GRAPH with name', () => {
+    it('named graph uses a scoped wildcard DELETE, safe for absent graphs', () => {
       const query = SparqlBuilder.buildClear('<http://example.org/graph>');
-      expect(query).to.equal('CLEAR GRAPH <http://example.org/graph>');
+      expect(query).to.equal('DELETE {\n  GRAPH <http://example.org/graph> {\n    ?s ?p ?o .\n  }\n}\nWHERE {\n  GRAPH <http://example.org/graph> {\n    ?s ?p ?o .\n  }\n}');
+      expect(SparqlBuilder.buildClear('http://example.org/graph')).to.equal(query);
     });
 
     it('bare named graph string is escaped and wrapped', () => {
       const query = SparqlBuilder.buildClear('http://example.org/graph');
-      expect(query).to.include('CLEAR GRAPH <http://example.org/graph>');
+      expect(query).to.include('GRAPH <http://example.org/graph>');
+      expect(query).not.to.include('CLEAR');
     });
   });
 

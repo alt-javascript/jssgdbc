@@ -92,7 +92,7 @@ describe('SPARQL stateful loopback contract', () => {
     await graph.clear();
     assert.deepEqual(fixture.requests.map(({ method, operation, graph }) => [method, operation, graph]), [
       ['POST', 'INSERT DATA', 'urn:g'], ['GET', 'SELECT', 'urn:g'], ['GET', 'ASK', 'urn:g'],
-      ['GET', 'COUNT', 'urn:g'], ['POST', 'DELETE DATA', 'urn:g'], ['POST', 'CLEAR', 'urn:g']
+      ['GET', 'COUNT', 'urn:g'], ['POST', 'DELETE DATA', 'urn:g'], ['POST', 'DELETE PATTERN', 'urn:g']
     ]);
     for (const { method, headers } of fixture.requests) {
       assert.equal(headers['x-example'], 'fixture');
