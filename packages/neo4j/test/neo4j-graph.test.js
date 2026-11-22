@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import neo4j from 'neo4j-driver';
 import { Neo4jClient, Neo4jDriver, Neo4jGraph, CypherBuilder, Cursor, DriverManager } from '../index.js';
 
-import { defaultGraph, XSD_STRING, RDF_LANG_STRING, snapshotTerm } from '@alt-javascript/jssgdbc-core';
+import { createQuad, defaultGraph, XSD_STRING, RDF_LANG_STRING, snapshotTerm } from '@alt-javascript/jssgdbc-core';
 import { encodeTerm, graphKey } from '../RdfStorage.js';
 const nn = value => ({ termType: 'NamedNode', value });
 const bn = value => ({ termType: 'BlankNode', value });
@@ -81,7 +81,7 @@ test('all pattern hooks forward all eight wildcard masks and graph scope', async
 
 test('find buffers structural terms in a core Cursor after session cleanup', async () => {
   const { client, state } = fixture();
-  const triples = [lit('quotes \\ and injection', RDF_LANG_STRING, 'en'), bn('blank'), nn('urn:iri'), lit('01', 'urn:int'), lit('1', 'urn:int')].map(object => ({ subject: snapshotTerm(bn('s')), predicate: snapshotTerm(nn('urn:p')), object: snapshotTerm(object) }));
+  const triples = [lit('quotes \\ and injection', RDF_LANG_STRING, 'en'), bn('blank'), nn('urn:iri'), lit('01', 'urn:int'), lit('1', 'urn:int')].map(object => createQuad(bn('s'), nn('urn:p'), object));
   state.records = triples.map(t => row({ subject: stored(t.subject), predicate: t.predicate.value, object: stored(t.object) }));
   const cursor = await client.getGraph().find();
   assert.ok(cursor instanceof Cursor);

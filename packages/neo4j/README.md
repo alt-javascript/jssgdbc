@@ -32,8 +32,9 @@ For deployment use server authentication and certificate-validated TLS (`bolt+s`
 or `neo4j+s`), with credentials supplied from your secret provider in properties,
 not URLs or logs. `+ssc` permits self-signed certificates and is not equivalent to
 validated trust. Provision database access and constraint-creation privileges:
-connect verifies connectivity and installs the idempotent `jssgdbc_term_identity`
-constraint. Existing conflicting data or insufficient privileges fail connection.
+connect verifies connectivity, inspects storage compatibility non-destructively, and
+installs three idempotent typed identity constraints. Incompatible storage or
+insufficient privileges fail connection; no automatic reset or migration occurs.
 
 ## Executable examples
 
@@ -47,14 +48,16 @@ graph names isolate runs; interrupted operations can leave data behind.
 <!-- example:default-crud -->
 ```javascript
 import { DriverManager } from '@alt-javascript/jssgdbc-neo4j';
+import { factory } from '@alt-javascript/jssgdbc-dataset';
+const { namedNode, literal } = factory;
 import { randomUUID } from 'node:crypto';
 
 export async function defaultExample(url, properties = {}) {
   const client = await DriverManager.getClient(url, properties);
   const graph = client.getGraph();
-  const subject = `urn:demo:${randomUUID()}`;
-  const predicate = 'urn:label';
-  const object = '"Hello"@en';
+  const subject = namedNode(`urn:demo:${randomUUID()}`);
+  const predicate = namedNode('urn:label');
+  const object = literal('Hello', 'en');
   try {
     await graph.add(subject, predicate, object);
     await graph.add(subject, predicate, object); // Set semantics: still one triple.
@@ -84,15 +87,17 @@ export async function defaultExample(url, properties = {}) {
 <!-- example:named-isolation -->
 ```javascript
 import { DriverManager } from '@alt-javascript/jssgdbc-neo4j';
+import { factory } from '@alt-javascript/jssgdbc-dataset';
+const { namedNode, literal } = factory;
 import { randomUUID } from 'node:crypto';
 
 export async function namedExample(url, properties = {}) {
   const client = await DriverManager.getClient(url, properties);
   const name = `urn:demo:${randomUUID()}`;
-  const left = client.getGraph(`${name}:left`);
-  const right = client.getGraph(`${name}:right`);
+  const left = client.getGraph(namedNode(`${name}:left`));
+  const right = client.getGraph(namedNode(`${name}:right`));
   const def = client.getGraph();
-  const triple = [name, 'urn:label', '"Named"'];
+  const triple = [namedNode(name), namedNode('urn:label'), literal('Named')];
   try {
     await left.add(...triple);
     const rightBefore = await right.has(...triple);
@@ -116,38 +121,78 @@ export async function namedExample(url, properties = {}) {
 }
 ```
 
-`getGraph()`, `getGraph(null)` and `getGraph('')` refer to the default graph.
-Named graphs are exact strings. Omitted/null/undefined pattern positions are
-wildcards; empty strings are rejected terms. Mutations return `undefined`.
+`getGraph()`, `getGraph(undefined)` and `getGraph(defaultGraph())` select the default
+graph. Named graphs require RDF/JS NamedNodes, not strings. Concrete SPO values
+are structural RDF/JS terms; null/undefined pattern positions are wildcards.
+Strings, Variables, RDF-star and blank-node graph names are rejected.
+
+## Explicit Dataset workflow
+
+An independent RDF/JS Dataset is accepted as an iterable of quads. Select every
+graph explicitly; the adapter does not enumerate graphs or guess replacement scope.
+Use a Dataset factory for detached reads (including isomorphic equality).
+
+<!-- example:dataset -->
+```javascript
+import { DriverManager, createQuad } from '@alt-javascript/jssgdbc-neo4j';
+import { factory } from '@alt-javascript/jssgdbc-dataset';
+import { randomUUID } from 'node:crypto';
+
+const { namedNode, blankNode, literal } = factory;
+
+export async function datasetExample(url, properties = {}) {
+  const client = await DriverManager.getClient(url, properties);
+  const graph = namedNode(`urn:demo:${randomUUID()}`);
+  const input = factory.dataset([createQuad(blankNode('shared'), namedNode('urn:label'), literal('Hello', 'en'), graph)]);
+  try {
+    const outcomes = await client.saveDataset(input, { graphs: [graph], mode: 'replace' });
+    const loaded = await client.loadDataset({ graphs: [graph], factory });
+    return { graph, equal: loaded.equals(input), outcomes: outcomes.map(o => o.status) };
+  } finally {
+    try { await client.saveDataset([], { graphs: [graph], mode: 'replace' }); }
+    finally { await client.close(); }
+  }
+}
+```
 
 ## Storage and operational limits
 
-See [SCHEMA.md](SCHEMA.md) for the precise mapping and transaction contract.
-`JssgdbcTerm` nodes have graph-scoped identity `(graph, kind, value)`.
-`JSSGDBC_TRIPLE` is the fixed relationship type; its `predicate` property stores
-the predicate, never a dynamic relationship type or label. Terms follow the
-[core string contract](../core/README.md#string-terms): `urn:x` and `<urn:x>`
-are equivalent; quoted `"urn:x"` is a distinct literal. Subjects cannot be
-literals; predicates require IRIs. Literal quotes and typed lexical values remain
-intact; equivalent escapes canonicalize, language tags lowercase and xsd:string
-becomes plain quoted syntax. Blank labels are graph-scoped, not globally portable.
-Malformed terms reject before I/O. Legacy noncanonical data is not migrated.
+See [SCHEMA.md](SCHEMA.md). Storage version **1**, profile **rdfjs-structural-v1**,
+uses `JssgdbcRdfSchema`, `JssgdbcRdfGraph`, `JssgdbcRdfTerm` and
+`JSSGDBC_RDF_TRIPLE`. Structural keys distinguish default/named graphs and term
+kinds. Literal lexical value, datatype and language are retained without numeric
+coercion: typed `01` and `1` remain distinct. Blank identity persists across graph
+partitions and close/reopen. Each Dataset save allocates a fresh blank scope once,
+shared across all its graphs and reused on managed retries. Input is not mutated.
 
-Adds have set semantics, using graph-scoped uniqueness and a transactional subject
-write lock. Do not bypass this write protocol or use `_jssgdbcLock` for application
-data. Existing duplicate relationships are not repaired. Remove/clear delete
-relationships only: orphan term nodes accumulate until separately reclaimed.
+All-input preflight precedes writes. Saves default to merge; replacement clears
+and inserts in **one managed transaction per selected graph**, even when empty.
+Graph mutations share a graph lock with Dataset replacement. Independent graphs
+commit sequentially; there is **no whole-save atomicity** or whole-Dataset load
+snapshot. `getCapabilities()` returns immutable versioned feature facts, including
+unsupported streaming, cross-graph atomicity, RDF-star and blank-node graphs.
 
-Each operation owns its session and managed transaction; there is no caller-owned
-multi-operation transaction. Native retries may repeat work. Reads are fully
-buffered, not streamed; cursor iteration does not provide backpressure, pagination
-or a result-size cap. Closing a cursor disables its API but does not free its
-retained array while it is referenced. Release references to reclaim memory.
-At 10x read volume, heap/GC can saturate first; at 10x concurrency, hot-subject locks
-or the native pool (100 connections per server) can saturate. Limit query breadth
-and caller concurrency. Timeouts bound individual waits/work, not memory or a
-strict overall deadline across retries. Opposite-endpoint writes can deadlock and
-retry. Bounded correctness tests are not throughput or production-hardening proof.
+`DatasetSaveError.outcomes` distinguishes committed, unknown and not-attempted
+graphs. Lost acknowledgement or session-close failure can mean a commit happened:
+unknown is not rollback. Reconnect, load the affected graphs and reconcile desired
+state before retrying. Blindly merging the same blank labels creates fresh blanks;
+it is not an idempotent retry. Coordinate writers before reconciling/replacing.
+
+Legacy `JssgdbcTerm`/`JSSGDBC_TRIPLE`, mixed, unmarked or incompatible metadata is
+rejected without destructive cleanup. Use a separate database, or explicitly back
+up/export and reset adapter-owned storage under operator control. Do not merely
+stamp new metadata on legacy records. Preserve unrelated application data and
+coordinate all writers; the adapter supplies no automatic migration/reset command.
+
+Reads, preflight and parameters are buffered **O(quads plus payload bytes)**.
+There is no streaming, pagination, result cap or backpressure. At 10x dataset size,
+heap/GC or server transaction memory can saturate first; at 10x concurrency,
+graph locks or the native pool (100 connections per server) can saturate. Bound
+Dataset size, query breadth and caller concurrency. Splitting saves changes atomicity
+and blank scope. Timeouts bound individual work/waits, not memory or an overall
+retry deadline. Remove/clear retain orphan term and graph nodes; storage reclamation
+is operator-controlled. Release cursor/Dataset references to reclaim local memory.
+Bounded tests prove correctness on the pinned fixture, not production throughput.
 
 Always await `client.close()`. It is idempotent and marks the client closed
 immediately; existing graph handles then reject operations. Buffered cursors remain
@@ -169,7 +214,7 @@ npm test
 Default tests are offline and Docker-independent. Deterministic adapter tests are not backend proof; use the live runner or
 `npm run test:conformance` for current-source backend evidence. The live runner requires Docker
 with Compose, starts `neo4j:5.26.0-community`, waits for health, executes node:test
-smoke and both marked README examples, then shared Mocha compliance in a separate
+typed smoke, Dataset durability/schema tests and all marked README examples, then shared typed Mocha compliance in a separate
 process. It prints the actual server version; tests must pass without skips.
 The supported/tested fixture is Neo4j **5.26.0**, not a claim about other versions.
 

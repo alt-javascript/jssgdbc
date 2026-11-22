@@ -1,6 +1,6 @@
 import neo4j from 'neo4j-driver';
 import { DriverManager, Neo4jDriver } from '@alt-javascript/jssgdbc-neo4j';
-import driverComplianceTests from '../../core/test/driverCompliance.js';
+import { typedGraphComplianceTests } from '../../core/test/typedCompliance.js';
 
 // No configurable URI: destructive reset is limited to the runner's disposable fixture.
 const uri = 'bolt://127.0.0.1:17687';
@@ -18,7 +18,7 @@ describe('Disposable Neo4j contract', function () {
     }
   });
 
-  driverComplianceTests('Neo4j shared driver compliance', async () => {
+  typedGraphComplianceTests('Neo4j shared driver compliance', async () => {
     if (!/^jssgdbc-test-[0-9a-f-]{36}$/.test(process.env.JSSGDBC_DISPOSABLE_NEO4J ?? '')) {
       throw new Error('Run compliance through the disposable integration runner');
     }
@@ -27,7 +27,7 @@ describe('Disposable Neo4j contract', function () {
       const session = native.session({ database: 'neo4j' });
       try {
         // Clear every graph, including default, graph1 and graph2, before each factory call.
-        await session.run('MATCH (n:JssgdbcTerm) DETACH DELETE n', {}, { timeout: 10000 });
+        await session.run('MATCH (n:JssgdbcRdfTerm) DETACH DELETE n', {}, { timeout: 10000 });
       } finally {
         await session.close();
       }

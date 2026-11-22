@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DriverManager } from '@alt-javascript/jssgdbc-neo4j';
+import { factory } from '../../dataset/index.js';
+const { namedNode, literal } = factory;
 
 const url = 'jssgdbc:neo4j:bolt://127.0.0.1:17687';
 const options = { database: 'neo4j', timeoutMs: 10000, connectionTimeoutMs: 2000 };
@@ -14,14 +16,14 @@ function extract(text, id) {
   const specifier = "'@alt-javascript/jssgdbc-neo4j'";
   assert.ok(matches[0][1].includes(specifier), 'public package import required');
   // Only resolve the package import; example operations are unchanged.
-  return matches[0][1].replace(specifier, JSON.stringify(import.meta.resolve('@alt-javascript/jssgdbc-neo4j')));
+  return matches[0][1].replace(/'(@alt-javascript\/jssgdbc-[^']+)'/g, (_, name) => JSON.stringify(import.meta.resolve(name)));
 }
 async function example(id) {
   return import(`data:text/javascript;base64,${Buffer.from(extract(readme, id)).toString('base64')}`);
 }
 
 test('README extraction rejects missing, duplicate and malformed blocks', () => {
-  for (const id of ['default-crud', 'named-isolation']) {
+  for (const id of ['default-crud', 'named-isolation', 'dataset']) {
     assert.ok(extract(readme, id));
     assert.throws(() => extract('', id), /marker required/);
     assert.throws(() => extract(readme + `\n<!-- example:${id} -->`, id), /marker required/);
@@ -69,9 +71,10 @@ for (const [id, name, expectedHandles] of [
       assert.ok(handles.every(h => h.isClosed()), 'example closes all acquired handles');
       assert.equal(closeSettled, true, 'native client close awaited before return');
       if (id === 'default-crud') {
-        assert.deepEqual(result, { subject: result.subject,
-          rows: [{ subject: result.subject, predicate: 'urn:label', object: '"Hello"@en' }],
-          present: true, count: 1, afterRemove: false });
+        assert.deepEqual({ ...result, rows: undefined }, { subject: result.subject,
+          rows: undefined, present: true, count: 1, afterRemove: false });
+        assert.equal(result.rows.length, 1);
+        assert(result.rows[0].equals(factory.quad(result.subject, namedNode('urn:label'), literal('Hello', 'en'))));
       } else {
         assert.deepEqual(result, { name: result.name, rightBefore: false, defaultBefore: false,
           leftAfter: 0, rightPreserved: true, rightAfter: 0 });
@@ -81,8 +84,8 @@ for (const [id, name, expectedHandles] of [
       try {
         if (id === 'default-crud') assert.equal(await verifier.getGraph().count(result.subject), 0);
         else {
-          assert.equal(await verifier.getGraph(`${result.name}:left`).count(), 0);
-          assert.equal(await verifier.getGraph(`${result.name}:right`).count(), 0);
+          assert.equal(await verifier.getGraph(namedNode(`${result.name}:left`)).count(), 0);
+          assert.equal(await verifier.getGraph(namedNode(`${result.name}:right`)).count(), 0);
         }
       } finally { await verifier.close(); }
       await assert.rejects(module[name](url, { timeoutMs: 0 }), /Invalid Neo4j properties/);
@@ -94,3 +97,14 @@ for (const [id, name, expectedHandles] of [
     }
   });
 }
+
+test('README Dataset workflow executes unchanged and cleans its graph', async () => {
+  assert.match(process.env.JSSGDBC_DISPOSABLE_NEO4J ?? '', /^jssgdbc-test-[0-9a-f-]{36}$/);
+  const { datasetExample } = await example('dataset');
+  const result = await datasetExample(url, options);
+  assert.equal(result.equal, true);
+  assert.deepEqual(result.outcomes, ['committed']);
+  const verifier = await DriverManager.getClient(url, options);
+  try { assert.equal(await verifier.getGraph(result.graph).count(), 0); }
+  finally { await verifier.close(); }
+});

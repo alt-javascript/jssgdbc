@@ -101,14 +101,26 @@ for (const name of names.filter(n => n !== 'core')) {
       const driver = drivers[0];
       let nativeClosed = false, initialized = false, sessionClosed = false, verified = false;
       // Neo4j eagerly verifies connectivity; substitute only its existing native seam.
-      if ('${name}' === 'neo4j') driver._nativeDriverFactory = () => ({
-        verifyConnectivity: async () => { verified = true; },
-        session: () => ({
-          executeWrite: async work => work({ run: async () => { initialized = true; return { records: [] }; } }),
-          close: async () => { sessionClosed = true; }
-        }),
-        close: async () => { nativeClosed = true; }
-      });
+      if ('${name}' === 'neo4j') {
+        const { INSPECT_SCHEMA, ENSURE_SCHEMA, SCHEMA_PARAMS } = await import('./packages/neo4j/RdfStorage.js');
+        let marked = false;
+        const record = values => ({ keys: Object.keys(values), get: key => values[key] });
+        const run = async query => {
+          if (query === INSPECT_SCHEMA) return { records: [record({ legacy: false, owned: false, markers: marked ? [SCHEMA_PARAMS] : [] })] };
+          if (query === ENSURE_SCHEMA) { marked = initialized = true; return { records: [record({ marker: SCHEMA_PARAMS })] }; }
+          assert.match(query, /^CREATE CONSTRAINT/);
+          return { records: [] };
+        };
+        driver._nativeDriverFactory = () => ({
+          verifyConnectivity: async () => { verified = true; },
+          session: () => ({
+            executeRead: async work => work({ run }),
+            executeWrite: async work => work({ run }),
+            close: async () => { sessionClosed = true; }
+          }),
+          close: async () => { nativeClosed = true; }
+        });
+      }
       const urls = { memory: 'jssgdbc:memory:', file: 'jssgdbc:file:' + process.cwd() + '/packaging-unused', sparql: 'jssgdbc:sparql:http://127.0.0.1:1/dataset', neo4j: 'jssgdbc:neo4j:bolt://127.0.0.1:1' };
       assert.ok(driver.acceptsURL(urls['${name}']));
       const client = await DriverManager.getClient(urls['${name}']);

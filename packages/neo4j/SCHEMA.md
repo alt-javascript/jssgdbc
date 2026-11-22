@@ -1,276 +1,107 @@
-# Neo4j runtime and Cypher statement contract
+# Typed Neo4j storage contract
 
-The package exports `Neo4jDriver`, `Neo4jClient`, `Neo4jGraph`, `CypherBuilder`
-and the core API. Importing the package registers a singleton driver with
-`DriverManager`; connection occurs only on `DriverManager.getClient(...)`.
-The builder itself performs no I/O. Its static methods return fresh
-`{query, params}` objects:
+## Version and admission
 
-- `buildAdd(graphName, subject, predicate, object)`
-- `buildFind(graphName, subject, predicate, object)`
-- `buildHas(graphName, subject, predicate, object)`
-- `buildCount(graphName, subject, predicate, object)`
-- `buildRemove(graphName, subject, predicate, object)`
-- `buildClear(graphName)`
+Storage version `1`, profile `rdfjs-structural-v1` is centralized in
+`RdfStorage.js`. It is deliberately incompatible with legacy string storage.
+Connection verifies native connectivity, inspects owned records before DDL, creates
+identity constraints and converges on one transactional schema marker. A second
+inspection validates repeat opens. Unrelated application labels are permitted.
 
-## Transport contract
+The marker is `(:JssgdbcRdfSchema {id: 'jssgdbc-rdf', version: '1',
+profile: 'rdfjs-structural-v1'})`. Constraints uniquely identify marker `id`,
+graph `key`, and term `(graph, key)`. Legacy `JssgdbcTerm` or `JSSGDBC_TRIPLE`,
+mixed old/new, unmarked owned records, multiple or incompatible markers reject
+admission. Compatibility errors are sanitized and provide operator-controlled
+reset guidance, never query, credentials or stored payloads. Admission is not an
+exhaustive integrity scan; malformed term/triple records reject buffered decoding.
 
-The public `Neo4jDriver`/`Neo4jClient` transport accepts
-`jssgdbc:neo4j:<native-uri>` with `bolt`, `bolt+s`, `bolt+ssc`, `neo4j`,
-`neo4j+s`, or `neo4j+ssc`. Embedded userinfo, fragments and non-root paths
-are rejected. Credentials belong only in properties, never in the URL.
+There is no automatic migration or destructive repair. Back up/export first,
+coordinate writers, then choose a separate database or explicitly reset only
+adapter-owned storage under operator control. Never relabel legacy data or invent
+a marker to bypass validation. Preserve unrelated labels and relationships.
 
-Properties must be a plain object with only these optional keys:
+## Physical representation and identity
 
-| Property | Type / default |
-| --- | --- |
-| `username`, `password` | Nonempty strings, supplied together; omitted means native unauthenticated connection |
-| `database` | Nonblank string; omitted uses the server default |
-| `timeoutMs` | Integer 1–2147483647; default 30000; transaction timeout and native retry budget |
-| `connectionTimeoutMs` | Integer 1–2147483647; default 10000; connection and pool acquisition timeout |
+- `JssgdbcRdfGraph`: `key` is the core structural graph key. DefaultGraph and
+  NamedNode graph identifiers cannot collide. Blank graph names are unsupported.
+- `JssgdbcRdfTerm`: `graph` is the graph key, `key` the core structural term key,
+  with `termType`, `value` and literal-only `language` and `datatype` strings.
+- `(subject)-[:JSSGDBC_RDF_TRIPLE {predicate: iri}]->(object)` represents a triple
+  within one physical graph. Predicates are NamedNodes; literal subjects reject.
 
-Connect verifies connectivity and installs the idempotent composite uniqueness
-constraint `jssgdbc_term_identity` on `JssgdbcTerm(graph, kind, value)` before
-returning. Initialization failure closes the owned driver. Constraint creation
-requires appropriate server permissions and compatible existing data.
+Keys are unambiguous JSON encodings, not delimiter concatenations. Literal lexical
+forms are not coerced to native numbers/booleans. Datatype and language participate
+in identity; typed `01` differs from `1`. Stable blank identifiers span physical
+graph partitions. A new Dataset save maps each input blank label to a UUID-based
+identity once across the entire input, before managed retries. Repeating an
+independent merge save therefore allocates new blanks. Graph.add uses explicit
+blank identity directly. Independent RDF/JS implementations work structurally.
 
-Each operation owns one session and uses a managed read/write transaction.
-Sessions close in `finally`; the primary operation failure wins over cleanup
-failure. Native retries can repeat callbacks; callbacks must have no external
-side effects. Records are buffered before the transaction returns; decoding is
-performed by the graph layer after session cleanup. There is no streaming,
-backpressure, caller-owned transaction scope or result-size cap. Memory is
-O(returned rows and their payloads); at 10x result volume heap/GC may saturate
-before the server. Concurrent operations can saturate the pool (100 connections
-per server) or server locks. Acquisition timeouts and native transaction timeouts
-limit waiting/work, not result memory, nor a strict end-to-end wall-clock deadline
-across retries. Callers must limit concurrent work and broad queries.
+## Query and transaction contract
 
-`close()` marks the client closed immediately and returns the same cleanup promise
-on repeated calls, including when cleanup rejects. Await it. Errors expose only
-operation and a recognized-format native driver code; native messages, causes,
-credentials and parameters are not retained in the exposed error. No query or
-credential logging is configured. Run `npm test --workspace=packages/neo4j` for
-offline transport, graph decoding/lifecycle and mapper diagnostics. Live service
-checks and fixture readiness/startup/teardown commands are documented below; no live
-service or concurrency result is claimed by these offline tests.
+`CypherBuilder` returns `{ query, params }` for buildAdd, buildFind, buildHas,
+buildCount, buildRemove, buildClear and buildLock. Every RDF value is a parameter;
+labels and query structure are fixed. Pattern null/undefined positions are
+wildcards. Reads buffer records and strictly validate before creating detached
+quads. Unknown/corrupt records or malformed counts reject, never empty success.
 
-`client.getGraph(null)`, `getGraph(undefined)` and `getGraph('')` share the same
-cached default graph. Graph handles reject operations after graph or client close,
-including handles retained before client close. Mutations resolve to `undefined`.
-`find` returns a core `Cursor` of exact string triples, fully independent of the
-closed session and subsequently closed client. Cursor close only releases its API
-usability; it does not control server resources. Find aliases/types are validated;
-`has` requires exactly one boolean `exists` row. Decode errors identify the
-operation as `Neo4j <operation>: invalid result` and exclude row contents.
+Graph add/remove/clear acquire the graph serialization lock before mutation.
+The lock uses a graph-node write before term/relationship MERGE, suppressing
+concurrent duplicate relationships across clients. Dataset replacement uses that
+same lock, clear and insertion in one managed transaction per graph. Empty
+replacement still clears transactionally. Merge also locks. Fixed parameters and
+blank scopes are reused by native managed retries. Remove/clear retain orphan term
+and graph nodes, so reclamation is a separate operator concern.
 
-## Term and triple identity
+Dataset input and selectors undergo full preflight before any write. Graphs are
+explicit and unique; foreign quads, strings, Variables, RDF-star and blank graph
+selectors reject. Selected graphs execute sequentially. There is no whole-save
+atomicity, no cross-graph read snapshot and no promise of streaming. Replace racing
+with add has either complete serialized order, not interleaved clear/insertion.
 
-Nodes have the fixed label `JssgdbcTerm` and string properties `graph`, `kind`,
-`value`. Identity is the complete tuple `(graph, kind, value)`, not just value.
-Relationships have the fixed type `JSSGDBC_TRIPLE` and string property `predicate`.
-A triple's identity is its subject endpoint, exact predicate, and object endpoint.
-Predicates are never labels or relationship types.
+A save reports per-graph committed/unknown/not-attempted outcomes. Hook rejection,
+including lost acknowledgement or session-close failure, is conservatively unknown
+rather than proof of rollback. Reconnect and load/reconcile affected graphs before
+retrying, coordinating other writers. Blind merge retry with blanks is not
+idempotent. Tests separately prove a known server-aborted transaction rolls back;
+that does not resolve transport uncertainty.
 
-Both endpoints bind the same graph parameter. Null or undefined graph names
-normalize to `''` (the default graph); all other graph names must be strings.
-`''` is the default, not a distinct named graph. Named graphs use exact strings;
-identical terms and blank-node identifiers in different graphs are separate nodes.
+## Runtime, lifecycle and limits
 
-Terms follow the [core string contract](../core/README.md#string-terms).
-Absolute IRIs and their bracketed forms canonicalize to the same unbracketed
-value. Valid double-quoted literals have kind `literal`, valid `_:` labels have
-kind `blank`, and IRIs have kind `iri`. Subjects allow IRIs/blank nodes;
-predicates require IRIs. Single-quoted, empty, bare and malformed terms reject.
-Equivalent escapes canonicalize, language tags lowercase, and xsd:string becomes
-plain quoted syntax. Typed lexical values remain strings, never coerced numbers.
-Blank labels are graph-scoped and are not globally portable identifiers.
-Experimental legacy noncanonical stored data is not migrated by this change.
+The public URL is `jssgdbc:neo4j:<native-uri>` (bolt/neo4j and their +s/+ssc forms).
+No arbitrary query API is exposed. See README for connection properties and
+executable examples. Credentials come from properties, not URL userinfo.
+Connection returns only after compatibility admission. Failed initialization
+closes the native driver. Public close rejects new admissions, drains previously
+admitted Dataset and Graph operations and then closes native resources. Cursors
+already returned are detached buffered snapshots and must be closed by callers.
 
-## Insertion
+`getCapabilities()` returns deeply immutable, versioned facts: persistent blank
+identity, RDF 1.1, explicit named/default graphs, merge/replace, buffered delivery,
+per-graph save transactions; no cross-graph atomicity, streaming, RDF-star, Variables
+or blank-node graph names. Consult the capability object, not inference from
+method presence.
 
-`buildAdd` returns a fresh `{query, params}` with deterministic statement text:
+Preflight, scoped parameters and buffered reads require O(quads plus lexical
+payload bytes) memory. No pagination, result cap, automatic chunking or backpressure
+is supplied. At 10x input size heap/GC or Neo4j transaction memory can saturate;
+at 10x concurrency hot graph locks and native pool capacity can saturate first.
+Bound caller concurrency/input/query breadth; splitting saves changes atomicity and
+blank scope. Native pool maximum is 100 per server. `timeoutMs` bounds transaction
+and connection acquisition waits; `connectionTimeoutMs` bounds establishment;
+managed retries can outlast a single timeout. No throughput SLA is claimed.
 
-```cypher
-MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})
-MERGE (o:JssgdbcTerm {graph: $graph, kind: $objectKind, value: $object})
-MERGE (s)-[r:JSSGDBC_TRIPLE {predicate: $predicate}]->(o)
-```
+## Verification and diagnostics
 
-For `CypherBuilder.buildAdd(null, '_:s', 'urn:p', '"hello"@en')`, params are:
-
-```js
-{
-  graph: '', subjectKind: 'blank', subject: '_:s',
-  predicate: 'urn:p', objectKind: 'literal', object: '"hello"@en'
-}
-```
-
-The graph passes query and params separately to transport; it never interpolates
-params back into query text. The result has no return-row contract for mutations.
-Calls do not mutate inputs or share mutable parameter objects.
-
-Missing/null/undefined add terms, non-string concrete values (including boxed
-strings), literal subjects and blank/literal predicates throw synchronous
-`TypeError`s. Messages identify the operation, role and one-based argument
-position without echoing input, e.g. `buildAdd: subject (argument 2) must be a string`.
-Values are never coerced. Empty strings are rejected, not treated as wildcards.
-
-### Transactional insertion lock
-
-Before running the builder's add statement, `Neo4jGraph` executes this fixed
-statement in the **same managed write transaction**:
-
-```cypher
-MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})
-SET s._jssgdbcLock = true
-REMOVE s._jssgdbcLock
-```
-
-The composite uniqueness constraint provides one graph-scoped subject. Writing
-its reserved temporary `_jssgdbcLock` property acquires a database-side node write
-lock held until transaction end, even after the property is removed. The next
-statement performs relationship MERGE only after that lock is acquired, serializing
-identical-subject inserts across clients. No process-local mutex is used. This
-metadata does not alter `(graph, kind, value)` identity or remain after commit.
-Do not use `_jssgdbcLock` for application data or bypass this protocol for writes.
-Self-loops reuse the same term; opposite-endpoint inserts may deadlock as they
-acquire object locks, and the native managed transaction retries the entire
-lock-plus-add callback for retryable failures. Exhausted retries fail safely.
-Offline tests assert sequencing and retry-safe callbacks; the live integration
-suite verifies bounded cross-client concurrent set semantics on the pinned fixture.
-Existing duplicate relationships are not repaired.
-
-## Pattern operations and result aliases
-
-For `buildFind`, `buildHas`, `buildCount` and `buildRemove`, null, undefined and
-omitted SPO arguments are wildcards independently in each position. Empty strings
-are rejected. Concrete values reuse insertion's classification and
-validation, with the invoked method name in each error. Graph validation is the
-same for every method, including `buildClear`.
-
-Every pattern statement starts with this connected, fixed-label/type match:
-
-```cypher
-MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})
-```
-
-Concrete subjects append `s.kind = $subjectKind AND s.value = $subject`;
-predicates append `r.predicate = $predicate`; objects append
-`o.kind = $objectKind AND o.value = $object`. Filters appear in SPO order in one
-`WHERE` clause joined by `AND`; a fully wildcard pattern has no `WHERE` clause.
-Only concrete filters contribute parameters; `graph` is always present.
-
-The final clause is fixed by method:
-
-| Method | Final clause | Row contract |
-| --- | --- | --- |
-| `buildFind` | `RETURN s.value AS subject, r.predicate AS predicate, o.value AS object` | Exact strings, no internal entities; no ordering guarantee |
-| `buildHas` | `RETURN count(r) > 0 AS exists` | One boolean, including false for no matches |
-| `buildCount` | `RETURN count(r) AS count` | One aggregate count, including zero for no matches |
-| `buildRemove` | `DELETE r` | No return-row contract |
-| `buildClear` | `DELETE r` | Same statement as fully wildcard remove |
-
-The graph requires one native Neo4j Integer count, checks `inSafeRange()` before
-`toNumber()`, and rejects negative, unsafe or malformed values without echoing
-them. Zero and Number.MAX_SAFE_INTEGER are supported. Aggregations have no
-grouping keys so the contract includes a row for zero matches; the live integration
-suite verifies empty and nonempty aggregates.
-
-For example, `CypherBuilder.buildFind('named', null, 'urn:p', '"hello"@en')`
-returns:
-
-```js
-{
-  query: 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})\n'
-    + 'WHERE r.predicate = $predicate AND o.kind = $objectKind AND o.value = $object\n'
-    + 'RETURN s.value AS subject, r.predicate AS predicate, o.value AS object',
-  params: { graph: 'named', predicate: 'urn:p', objectKind: 'literal', object: '"hello"@en' }
-}
-```
-
-`CypherBuilder.buildClear()` returns the connected match followed by `DELETE r`
-with `{graph: ''}`. Remove and clear delete only matched `JSSGDBC_TRIPLE`
-relationships whose endpoints both belong to the requested graph. They never
-use `DETACH DELETE`, delete nodes, traverse variable-length paths, or target
-unrelated application labels/types. Orphan terms are intentionally retained;
-node cleanup is outside this contract.
-
-## Limits of this proof
-
-Offline tests assert generated strings/parameters, lock sequencing, buffered
-decoding, connection/cleanup failures and API lifecycle, not executed Cypher.
-The live integration suite verifies real Neo4j parsing/execution and bounded
-concurrent inserts on the pinned fixture, as recorded below. Node uniqueness
-alone is not a relationship uniqueness guarantee. This proof does not cover
-arbitrary workloads or server versions, and streaming is not supported.
-
-Building validates/canonicalizes string terms and allocates a bounded number of objects;
-text handling and transport serialization are at most linear in input size.
-The builder has no I/O, graph scan, cache, batch accumulation or interpolation.
-At 10x caller volume, allocation/GC and retained parameter payloads are the local
-resource concern; no artificial term-size limit is imposed. Runtime broad queries
-buffer all matching rows; there is no pagination or backpressure. At 10x write
-concurrency, hot-subject lock contention or connection pool acquisition can become
-the first bottleneck. Timeouts/retry budgets bound individual waits, not memory.
-Orphan nodes accumulate on remove/clear; storage reclamation is not implemented.
-
-The historical live evidence below predates M005 term validation. Current M005
-term behavior has deterministic offline proof only; fresh live proof is pending S03.
-
-## Disposable live fixture
-
-From the repository root, with Docker running:
-
-```sh
-npm run test:integration --workspace=packages/neo4j
-```
-
-The command creates a uniquely named Compose project, waits for readiness, runs
-the node:test smoke and executable [README](README.md) examples, followed by the
-shared Mocha driver compliance suite in a separate process, and awaits teardown
-in `finally`, including after startup or test
-failure. Startup, test execution and teardown have subprocess timeouts; any failure
-returns nonzero. Docker and Compose must be installed and running, and port 17687
-must be free. Concurrent fixture runs on this fixed port are not supported; a port
-conflict fails without removing another run's project. The pinned
-`neo4j:5.26.0-community` fixture exposes only Bolt on `127.0.0.1:17687`;
-HTTP is not published. Data and logs use ephemeral tmpfs, not production volumes.
-Authentication is disabled **only for this disposable local fixture**. Do not
-point this suite at a shared service or change a remote service's authentication.
-The suite intentionally has no remote URL override: it uses
-`jssgdbc:neo4j:bolt://127.0.0.1:17687`, database `neo4j`, no credentials,
-2000ms connection/acquisition timeout and 10000ms transaction/retry budget.
-Run on a trusted local machine; any local process can access this fixture.
-
-Compose waits for a successful `cypher-shell RETURN 1` health check. Pull/startup
-or readiness failure is a failure, not a skip. The command starts the service when
-absent instead of relying on a previously started fixture. It prints the actual server version from
-`dbms.components()` only after a successful connection. Named tests cover CRUD,
-all eight wildcard masks, exact string round trips, independent-client duplicate
-inserts (including blank nodes and self-loops), opposite endpoints, constraints,
-application-data isolation and lifecycle. Twelve concurrent writes per case are
-bounded correctness checks, not throughput claims. Buffering and hot-subject
-contention limits above still apply.
-
-Smoke cleanup in `finally` awaits driver closure and deletes only run-owned named
-graphs/default subject and sentinel nodes. README examples close their cursors,
-graphs and clients and remove their demo relationships. The subsequent compliance
-phase resets all `JssgdbcTerm` nodes before each client factory call, solely in this
-disposable fixture. Fixture teardown reclaims remaining orphan terms. The unavailable-endpoint case uses a freshly released loopback port
-and asserts bounded, redacted failure context. Offline malformed-row/integer tests
-remain necessary because normal servers do not produce those invalid records.
-
-Verification note (2026-11-21): after initial image-pull timeouts, fixture startup
-and health checks succeeded. The non-skipped integration suite passed both tests
-against the observed Neo4j runtime **5.26.0**, including public CRUD and bounded
-cross-client concurrency checks. This is correctness evidence, not a throughput
-or broader server-version compatibility claim.
-
-## Diagnostics
-
-Inspect `{query, params}` locally or run `node --test test/cypher-builder.test.js`
-from the package directory. Tests name fixtures and invalid argument positions.
-Neither builder nor adapter logs query parameters, triple contents or credentials.
-Graph tests in `test/neo4j-graph.test.js` name failures by alias, integer boundary,
-transaction order and lifecycle. Transport tests localize native failure phases.
+`npm test --workspace=packages/neo4j` covers schema admission, parameterization,
+strict decoding, retry stability, close drain, lost acknowledgement and session-close
+uncertainty. `npm run test:integration --workspace=packages/neo4j` is mandatory real
+proof: a random project-owned Compose fixture, serialized node:test live suites
+(including independent Dataset compliance), then typed Mocha graph compliance.
+It tests close/reopen, concurrent first opens, duplicate insertion, replace/add
+serialization, injection, malformed input, rollback and unchanged incompatible
+storage sentinels. README examples are executed unchanged. Runner phase timings and
+owned project ID provide diagnostics. Missing Docker, unhealthy service, timeout or
+failed suite produce nonzero status; bounded project-only teardown always runs.
+Never run fixture cleanup against an external database or unrelated Docker project.

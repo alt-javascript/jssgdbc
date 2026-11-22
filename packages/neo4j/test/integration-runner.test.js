@@ -38,7 +38,7 @@ test('successful startup, separate node and workspace Mocha suites, then scoped 
   assert.equal(status, 0);
   assert.ok(messages.some(message => message.includes('owned container removal passed')));
   assert.equal(calls.length, 5);
-  assert.deepEqual(calls[1].args, ['--test', 'test/neo4j-integration.test.js', 'test/readme-integration.test.js']);
+  assert.deepEqual(calls[1].args, ['--test', '--test-concurrency=1', 'test/dataset-integration.test.js', 'test/neo4j-integration.test.js', 'test/readme-integration.test.js']);
   assert.match(calls[2].args[0], /mocha\/bin\/mocha.js$/);
   assert.ok(calls[2].args.includes('--forbid-pending'));
   assert.ok(calls[2].args.includes('--fail-zero'));

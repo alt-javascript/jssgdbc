@@ -78,6 +78,6 @@ export function decodeTriple(record, graph) {
   try {
     const quad = createQuad(decodeTerm(record.subject, graph, 'subject'),
       { termType: 'NamedNode', value: record.predicate }, decodeTerm(record.object, graph), graph);
-    return { subject: quad.subject, predicate: quad.predicate, object: quad.object };
+    return quad;
   } catch { throw new Error('Neo4j RDF storage: invalid triple record'); }
 }
