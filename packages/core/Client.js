@@ -39,14 +39,7 @@ export class Client {
     if (typeof factory?.dataset !== 'function') throw new TypeError('Expected DatasetFactory');
     const make = factory.dataset.bind(factory);
     return this._enqueueDataset(async () => {
-      const quads = [];
-      for (const graph of selected) {
-        for (const q of await this._loadDatasetGraph(graph)) {
-          const copy = createQuad(q.subject, q.predicate, q.object, snapshotTerm(q.graph, 'graph'));
-          if (!copy.graph.equals(graph)) throw new TypeError('Adapter returned an unselected graph');
-          quads.push(copy);
-        }
-      }
+      const quads = this._validateDatasetQuads(await this._loadSelectedDataset(selected), selected);
       return make(quads);
     });
   }
@@ -67,14 +60,28 @@ export class Client {
     return this._enqueueDataset(async () => {
       const outcomes = selected.map(graph => ({ graph, status: 'not-attempted' }));
       try {
-        const scoped = this._scopeDataset(snapshot);
-        const groups = new Map(selected.map(graph => [termKey(graph), []]));
-        for (const q of scoped) groups.get(termKey(q.graph)).push(q);
-        for (const outcome of outcomes) {
-          outcome.status = 'unknown';
-          await this._saveDatasetGraph(outcome.graph, groups.get(termKey(outcome.graph)), mode);
-          outcome.status = 'committed';
-        }
+        const scoped = Object.freeze(this._validateDatasetQuads(this._scopeDataset(Object.freeze(snapshot)), selected));
+        const byKey = new Map(outcomes.map(outcome => [termKey(outcome.graph), outcome]));
+        let active = true;
+        const update = (graphs, status) => {
+          if (!active) throw new Error('Dataset progress is no longer active');
+          const keys = graphs.map(termKey);
+          if (keys.some(key => !byKey.has(key))) {
+            throw new TypeError('Progress contains an unselected graph');
+          }
+          for (const key of keys) {
+            const outcome = byKey.get(key);
+            if (outcome.status !== 'committed') outcome.status = status;
+          }
+        };
+        const progress = Object.freeze({
+          dispatched: (graphs = selected) => update(graphs, 'unknown'),
+          committed: (graphs = selected) => update(graphs, 'committed')
+        });
+        try {
+          await this._saveSelectedDataset(selected, scoped, mode, progress);
+          progress.committed();
+        } finally { active = false; }
       } catch (cause) {
         throw new DatasetSaveError('Dataset save failed', cause, outcomes);
       }
@@ -89,7 +96,7 @@ export class Client {
       const copy = snapshotTerm(graph, 'graph');
       unique.set(termKey(copy), copy);
     }
-    return [...unique.values()];
+    return Object.freeze([...unique.values()]);
   }
 
   _enqueueDataset(operation) {
@@ -97,6 +104,37 @@ export class Client {
     // A failure must not poison subsequent admissions or become unhandled.
     this._datasetTail = pending.then(() => {}, () => {});
     return pending;
+  }
+
+  _validateDatasetQuads(quads, graphs) {
+    const keys = new Set(graphs.map(termKey));
+    const copies = [];
+    for (const q of quads) {
+      if (q?.termType !== 'Quad' || q.value !== '') throw new TypeError('Expected RDF/JS Quad');
+      const copy = createQuad(q.subject, q.predicate, q.object, snapshotTerm(q.graph, 'graph'));
+      if (!keys.has(termKey(copy.graph))) throw new TypeError('Adapter returned an unselected graph');
+      copies.push(copy);
+    }
+    return copies;
+  }
+
+  // Override these hooks to preserve a single request/response blank-node scope.
+  async _loadSelectedDataset(graphs) {
+    const quads = [];
+    for (const graph of graphs) {
+      for (const quad of this._validateDatasetQuads(await this._loadDatasetGraph(graph), [graph])) quads.push(quad);
+    }
+    return quads;
+  }
+
+  async _saveSelectedDataset(graphs, quads, mode, progress) {
+    const groups = new Map(graphs.map(graph => [termKey(graph), []]));
+    for (const q of quads) groups.get(termKey(q.graph)).push(q);
+    for (const graph of graphs) {
+      progress.dispatched([graph]);
+      await this._saveDatasetGraph(graph, Object.freeze(groups.get(termKey(graph))), mode);
+      progress.committed([graph]);
+    }
   }
 
   // Adapter hooks operate on admitted immutable snapshots, even during close.

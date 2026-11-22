@@ -38,9 +38,9 @@ Successful save resolves to a frozen array of frozen `{ graph, status: 'committe
 records, ordered by the deduplicated selection. Execution failure rejects with
 exported `DatasetSaveError`, preserving the original `cause` and frozen `outcomes`:
 
-- `committed`: that graph's hook resolved successfully;
-- `unknown`: that graph's hook was invoked but failed; it may have changed storage;
-- `not-attempted`: that graph's hook has not been invoked.
+- `committed`: acknowledged success (including a successful no-op);
+- `unknown`: dispatched work may have changed that graph without acknowledged success;
+- `not-attempted`: no work affecting that graph has been dispatched.
 
 Scope preparation failure leaves all outcomes not-attempted. No automatic retries,
 rollback, cross-graph atomicity or transaction isolation are promised. Never blindly
@@ -56,6 +56,35 @@ once that graph is committed; a rejection is conservatively unknown. Default hoo
 reject unsupported operations. Hooks consume admitted detached immutable terms and
 must not reenter public methods during client close or await their client's close.
 
+Batch adapters override `_loadSelectedDataset(graphs)` and
+`_saveSelectedDataset(graphs, quads, mode, progress)`. The default implementations
+orchestrate the per-graph hooks above, retaining partial fallback outcomes even if
+an adapter throws its own DatasetSaveError. Core still owns admission, complete
+preflight snapshots, selection deduplication, one `_scopeDataset` call per save,
+queueing, outcome records and error wrapping. Selection and quad arrays are frozen;
+terms are detached and immutable. Scope output and load output are validated for
+quad shape, term positions and selected graph membership before use. The fallback
+additionally requires each load result to match its individual requested graph.
+
+A batch load returns an iterable (or promise thereof) covering only the selections.
+Its adapter must preserve a single response-local blank map across graphs; core
+validation preserves labels but does not infer identity across separate responses.
+A batch save prepares/serializes before calling `progress.dispatched()` immediately
+before the first potentially mutating dispatch. This marks all selections unknown;
+pass an array subset to mark only possibly affected graphs. Failures before dispatch
+leave selections not-attempted. Resolve only on acknowledged success: core then
+marks all selections committed. For sequential acknowledged portions, use
+`progress.committed(subset)` before proceeding. These callbacks update core-owned
+records, reject unselected graphs and expire when the hook settles. Committed
+records remain committed; do not redispatch already committed selections within
+one operation. Adapters must sanitize transport causes before throwing them; core
+preserves causes and never retries or claims atomicity.
+
+Both modes reach the hook even with no quads. Empty merge may resolve without
+transport; empty replace must clear every selected graph. Internal transport used
+by these hooks must accept already-admitted work during close drain, rather than
+performing another public closed check. Cleanup runs only after hooks settle.
+
 Dataset operations are serialized per client in admission order. Graph operations
 are not serialized with Dataset operations: callers must coordinate concurrent
 Graph edits themselves. Loads are buffered, not transactional cross-graph snapshots.
@@ -66,7 +95,8 @@ poison the queue or turn an operation failure into a cleanup failure.
 ## Load profile and limits
 
 This is a small/medium, in-process buffered API. Admission, scoping, graph grouping
-and factory construction retain multiple O(N) copies; each queued save retains its
+and factory construction retain multiple O(N + G) buffers for N quads and G selected
+graphs; each queued save retains its
 snapshot. Memory scoping scans stored quads O(S), and merge uses temporary identity
 sets O(S + N) instead of quadratic repeated Graph.add scans. The first scaling
 limits are heap and event-loop blocking, not network throughput. Serial execution
