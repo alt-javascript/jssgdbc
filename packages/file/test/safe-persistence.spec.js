@@ -58,10 +58,15 @@ describe('safe typed persistence', () => {
       await storage.write(graph, old);
       const identity = path.join(directory(), 'identity.json');
       if (metadata === null) await fs.unlink(identity); else await fs.writeFile(identity, metadata);
+      const sentinel = path.join(root, 'sentinel');
+      const bytes = Buffer.from([0, 255, 42]);
+      await fs.writeFile(sentinel, bytes);
       await assert.rejects(storage.read(graph), /identity/);
       await assert.rejects(storage.write(f.namedNode('urn:new'), next), /identity/);
       assert.equal(await fs.readFile(payload(), 'utf8'), old);
-      assert.equal((await fs.readdir(root)).length, 1);
+      assert.deepEqual(await fs.readFile(sentinel), bytes);
+      assert.equal((await fs.readdir(root)).length, 2);
+      if (metadata === null) await assert.rejects(fs.stat(identity), { code: 'ENOENT' });
       if (metadata !== null) assert.equal(await fs.readFile(identity, 'utf8'), metadata);
     });
   }

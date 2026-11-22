@@ -1,4 +1,5 @@
 import { DataFactory as F } from 'n3';
+import { NTriplesSerializer } from '../NTriplesSerializer.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -48,6 +49,24 @@ describe('file lifecycle', () => {
       assert.equal(await fresh.count(), afterCommit ? 3 : 2);
     });
   }
+  it('preserves payload and cached state after serialization failure and recovers', async () => {
+    const graph = client.getGraph(), s = F.namedNode('urn:s'), p = F.namedNode('urn:p');
+    await graph.add(s, p, F.literal('old'));
+    const payload = path.join(root, client._storage.key(F.defaultGraph()), 'graph.nt');
+    const before = await fs.readFile(payload);
+    const serialize = NTriplesSerializer.serialize, failure = Error('serialization injected');
+    NTriplesSerializer.serialize = () => { throw failure; };
+    try {
+      await assert.rejects(graph.add(s, p, F.literal('candidate')), error => error === failure);
+      assert.equal(await graph.count(), 1);
+      assert.equal(await graph.has(s, p, F.literal('candidate')), false);
+      assert.deepEqual(await fs.readFile(payload), before);
+    } finally { NTriplesSerializer.serialize = serialize; }
+    await graph.add(s, p, F.literal('recovery'));
+    await client.close();
+    client = await DriverManager.getClient(`jssgdbc:file:${root}`);
+    assert.equal(await client.getGraph().count(), 2);
+  });
   it('does not cache failed loads and performs no I/O for malformed terms', async () => {
     const graph = client.getGraph(), storage = client._storage;
     const read = storage.read.bind(storage); let reads = 0;
