@@ -7,7 +7,10 @@ import { spawnSync } from 'node:child_process';
 const root = fileURLToPath(new URL('../', import.meta.url));
 export const examples = [
   ['README.md', 'memory-quickstart'],
+  ['README.md', 'root-dataset-persistence'],
+  ['README.md', 'root-dataset'],
   ['packages/core/README.md', 'core-quickstart'],
+  ['packages/core/README.md', 'core-dataset-persistence'],
   ['packages/memory/README.md', 'memory-quickstart'],
   ['packages/file/README.md', 'file-quickstart'],
   ['packages/dataset/README.md', 'dataset-quickstart']
@@ -18,7 +21,7 @@ export function extractExample(source, path, marker) {
   const token = `<!-- example:${marker} -->`;
   assert.equal(source.split(token).length - 1, 1, `${label}: expected exactly one marker`);
   const tail = source.slice(source.indexOf(token) + token.length);
-  const match = /^\s*```javascript\r?\n([\s\S]*?)\r?\n```/.exec(tail);
+  const match = /^\s*```(?:javascript|js)\r?\n([\s\S]*?)\r?\n```/.exec(tail);
   assert.ok(match, `${label}: expected a fenced javascript block immediately after marker`);
   assert.ok(match[1].trim(), `${label}: empty example`);
   return match[1];

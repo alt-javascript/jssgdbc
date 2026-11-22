@@ -1,11 +1,15 @@
 # @alt-javascript/jssgdbc-file
 
-See the [breaking-change and capability guide](../../docs/breaking-changes.md)
-for typed-term migration, explicit Dataset persistence and recovery.
+JSSGDBC driver for local RDF files. Stores each graph as N-Triples with
+structural graph metadata, using atomic file replacement for writes.
 
-Experimental `0.0.0`, local-workspace-only package. Run `npm ci` at the repository root. Private metadata and the prepublish guard prevent accidental publication, not deliberate bypass. No registry release is supported.
+## Install
 
-## Usage
+Experimental `0.0.0` package, available only through the local npm workspace.
+Run `npm ci` in the workspace before using the imports below. The package is
+private and has a prepublish guard; no registry release is supported.
+
+## Quick Start
 
 Importing the package registers the file driver. Graph APIs accept RDF/JS terms, not strings or N-Triples surface syntax. Dataset edits are local until explicitly saved.
 
@@ -90,7 +94,7 @@ persisted labels returned by reads. Do not treat imported labels as global IDs.
 The file codec reversibly encodes arbitrary accepted blank labels and disables
 parser freshening, preserving sharing across separate files.
 
-## Storage and compatibility
+## Connection URL and Storage
 
 The URL is `jssgdbc:file:<directory>`. A missing directory is created lazily.
 Canonical RDF graph keys are hashed into bounded `v2-<sha256>` directories;
@@ -135,7 +139,7 @@ including Dataset I/O, rather than cancelling or deleting data. An open client c
 reacquire a closed graph handle; closed clients are terminal. Detached buffered
 cursors remain usable after close and have their own close method.
 
-## Limits and capabilities
+## Limitations
 
 `client.getCapabilities()` returns a deeply immutable versioned description.
 Typed RDF, default/named graphs and persistence are supported; transactions,

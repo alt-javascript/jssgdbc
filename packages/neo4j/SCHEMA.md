@@ -1,4 +1,8 @@
-# Typed Neo4j storage contract
+# Neo4j Storage Schema
+
+Reference for operators and maintainers of the JSSGDBC Neo4j driver. The adapter
+owns the labels and relationship type listed below; do not edit these records
+with application Cypher. Use the [driver API](README.md) to read and write RDF.
 
 ## Version and admission
 
@@ -92,16 +96,14 @@ blank scope. Native pool maximum is 100 per server. `timeoutMs` bounds transacti
 and connection acquisition waits; `connectionTimeoutMs` bounds establishment;
 managed retries can outlast a single timeout. No throughput SLA is claimed.
 
-## Verification and diagnostics
+## Recovery
 
-`npm test --workspace=packages/neo4j` covers schema admission, parameterization,
-strict decoding, retry stability, close drain, lost acknowledgement and session-close
-uncertainty. `npm run test:integration --workspace=packages/neo4j` is mandatory real
-proof: a random project-owned Compose fixture, serialized node:test live suites
-(including independent Dataset compliance), then typed Mocha graph compliance.
-It tests close/reopen, concurrent first opens, duplicate insertion, replace/add
-serialization, injection, malformed input, rollback and unchanged incompatible
-storage sentinels. README examples are executed unchanged. Runner phase timings and
-owned project ID provide diagnostics. Missing Docker, unhealthy service, timeout or
-failed suite produce nonzero status; bounded project-only teardown always runs.
-Never run fixture cleanup against an external database or unrelated Docker project.
+A compatibility failure leaves existing data in place. Use a separate database,
+or back up/export the data before an operator-controlled reset of adapter-owned
+storage. There is no automatic migration or reset API. Adding a current schema
+marker to legacy data does not convert it.
+
+For an unknown save outcome, reconnect and load the affected graphs before
+reconciling the intended state. Do not blindly retry a merge containing blank
+nodes: a new save allocates new identities. Coordinate writers during recovery
+and preserve unrelated application data.

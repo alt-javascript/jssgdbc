@@ -7,7 +7,10 @@ import { examples, extractExample, executeSource, runExample } from './readme-ex
 test('local documentation registry includes the optional Dataset workflow exactly once', () => {
   assert.deepEqual(examples, [
     ['README.md', 'memory-quickstart'],
+    ['README.md', 'root-dataset-persistence'],
+    ['README.md', 'root-dataset'],
     ['packages/core/README.md', 'core-quickstart'],
+    ['packages/core/README.md', 'core-dataset-persistence'],
     ['packages/memory/README.md', 'memory-quickstart'],
     ['packages/file/README.md', 'file-quickstart'],
     ['packages/dataset/README.md', 'dataset-quickstart']
@@ -26,6 +29,8 @@ test('missing, duplicate, malformed and empty markers identify README/example', 
     assert.throws(() => extractExample(source, 'README.md', 'negative'), /README\.md \[negative\]/);
   }
   assert.equal(extractExample(good, 'README.md', 'negative'), "console.log('ok');");
+  assert.equal(extractExample(good.replace('```javascript', '```js'), 'README.md', 'negative'), "console.log('ok');");
+  assert.throws(() => extractExample(good.replace('```javascript', '```python'), 'README.md', 'negative'), /fenced javascript block/);
 });
 
 test('missing README has contextual diagnostics', async () => {

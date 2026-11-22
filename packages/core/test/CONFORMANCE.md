@@ -22,11 +22,10 @@ node packages/sparql/test/run-integration.js
 
 Never point the shared suite at a production dataset: default-graph clear is deliberately tested. Use the owned runners rather than invoking live test files directly.
 
-## Current typed acceptance
+## Shared contracts
 
-The M005 string-term wording is **superseded** by the
-[breaking-change guide](../../../docs/breaking-changes.md),
-[typed profile](TYPED-TERMS.md) and [Dataset contract](DATASET-PERSISTENCE.md).
+The shared checks cover the [typed Graph profile](TYPED-TERMS.md) and
+[Dataset persistence contract](DATASET-PERSISTENCE.md).
 All four adapters run typed Graph compliance and the independent-factory
 `datasetCompliance` fixture through public clients. The aggregate explicitly runs
 memory/file Dataset executables before the real Neo4j/Fuseki runners. Local
@@ -50,7 +49,7 @@ typed compliance without weakening backend assertions.
 | Buffered cursor survives owner close | Yes | Yes | Yes | Yes |
 | Storage lifetime | Client memory | Local N-Triples files | Disposable database | In-memory dataset |
 
-Neo4j also runs its unchanged node:test smoke and marked README examples, including constraints, cross-client set semantics and unavailable endpoint diagnostics. Deterministic SPARQL HTTP fixtures and Neo4j injected drivers test error paths, not real backend equivalence. `npm test` alone is not live proof. Live Mocha uses `--forbid-pending --fail-zero`; infrastructure unavailability is failure, not a skip.
+Neo4j also runs its node:test smoke tests and marked README examples, including constraints, cross-client set semantics and unavailable endpoint diagnostics. Deterministic SPARQL HTTP fixtures and Neo4j injected drivers test error paths, not real backend equivalence. `npm test` alone is not live proof. Live Mocha uses `--forbid-pending --fail-zero`; infrastructure unavailability is failure, not a skip.
 
 ## Pinned backends and bounds
 
@@ -72,8 +71,8 @@ Startup, test, teardown or removal-check failure returns nonzero; the aggregate 
 ## Semantic and lifecycle differences
 
 See [TYPED-TERMS.md](TYPED-TERMS.md) for the current structural RDF/JS profile.
-[STRING-TERMS.md](STRING-TERMS.md) is historical only: strings are rejected.
-Plain and xsd:string literals are equivalent, language tags normalize lowercase,
+[String inputs](STRING-TERMS.md) are rejected by the Graph API.
+Plain and xsd:string literals are equivalent; structural language tags must already be lowercase,
 and typed lexical `001` remains distinct from `1`. All adapters require NamedNode
 or DefaultGraph selectors; no broader local graph-string syntax is accepted.
 

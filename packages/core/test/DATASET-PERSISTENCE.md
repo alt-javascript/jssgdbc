@@ -1,9 +1,17 @@
 # Explicit Dataset persistence contract
 
+Load selected graphs into a local Dataset, edit it in memory, and save explicitly.
+Memory, file, SPARQL and Neo4j clients expose the same API; storage guarantees and
+blank-node lookup support depend on the adapter. See
+[adapter conformance](CONFORMANCE.md) for checks and limitations.
+
+## Load and save
+
 `await client.loadDataset({ graphs, factory })` returns `factory.dataset(quads)`.
 `factory` is a caller-supplied RDF/JS DatasetFactory; core imports no optional
-Dataset implementation. The optional `packages/dataset` factory provides the full
-synchronous Dataset API. Factory method identity is captured at admission; the
+Dataset implementation. The optional
+[`@alt-javascript/jssgdbc-dataset`](../../dataset/README.md) factory provides the
+full synchronous Dataset API. Factory method identity is captured at admission; the
 caller remains responsible for any mutable private state in its factory.
 
 `await client.saveDataset(dataset, { graphs, mode = 'merge' })` accepts a
@@ -24,13 +32,13 @@ Loaded datasets are detached local values: add/delete/edit never persist implici
 
 ## Blank nodes
 
-Each save allocates a fresh client-local blank-node scope shared across all selected
+Each save allocates a fresh blank-node scope shared across all selected
 graphs. Memory scans existing stores to avoid existing labels and uses a monotonically
 increasing allocator across saves. Input terms are never relabeled in place. Compare
 round trips by isomorphism, not labels. Repeated merges containing blank nodes are
 **not idempotent**; they add fresh nodes, including when saving a previously loaded
 dataset. Replace selected graphs for a structural replacement; this does not preserve
-blank-node identity with unselected graphs. Labels are client-local, not global IDs.
+blank-node identity with unselected graphs. Labels are scoped identities, not global IDs.
 
 ## Outcomes and failures
 
@@ -47,7 +55,7 @@ rollback, cross-graph atomicity or transaction isolation are promised. Never bli
 retry an unknown blank-node merge. Inspect/reload affected graphs first. Load adapter
 and factory errors propagate directly. Preflight errors are not DatasetSaveError.
 
-## Adapter and lifecycle seams
+## Implementing an adapter
 
 Adapters implement `_loadDatasetGraph(graph)` (iterable or promise of iterable),
 `_scopeDataset(quads)` (synchronous fresh-scope preparation), and
@@ -85,6 +93,8 @@ transport; empty replace must clear every selected graph. Internal transport use
 by these hooks must accept already-admitted work during close drain, rather than
 performing another public closed check. Cleanup runs only after hooks settle.
 
+## Queueing and close
+
 Dataset operations are serialized per client in admission order. Graph operations
 are not serialized with Dataset operations: callers must coordinate concurrent
 Graph edits themselves. Loads are buffered, not transactional cross-graph snapshots.
@@ -94,7 +104,7 @@ poison the queue or turn an operation failure into a cleanup failure.
 
 ## Load profile and limits
 
-This is a small/medium, in-process buffered API. Admission, scoping, graph grouping
+This API buffers selected datasets in process; it does not stream them. Admission, scoping, graph grouping
 and factory construction retain multiple O(N + G) buffers for N quads and G selected
 graphs; each queued save retains its
 snapshot. Memory scoping scans stored quads O(S), and merge uses temporary identity
@@ -105,7 +115,7 @@ There is no size cap, backpressure, cancellation, timeout, or streaming guarante
 callers must bound datasets and await writes instead of unbounded concurrent admission.
 An adapter hook that never settles also prevents close from settling.
 
-`packages/memory/test/dataset.spec.js` exercises 1,000 and 10,000 ground quads with
+The [memory Dataset tests](../../memory/test/dataset.spec.js) exercise 1,000 and 10,000 ground quads with
 two saves and one load and prints elapsed time/process heap as diagnostics, not an
 SLA or a proven capacity ceiling. Core tests cover unsupported adapters, rejected
 async writes and cleanup ordering; memory tests cover round trips, validation,

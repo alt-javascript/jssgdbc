@@ -1,17 +1,17 @@
-# Typed Graph contract (core + memory)
+# Typed Graph contract
 
-This supersedes STRING-TERMS.md for core Graph and memory only. File, SPARQL and
-Neo4j still need migration; their legacy string compliance is NOT evidence of typed
-conformance. README examples and broader adapter suites are migrated separately.
-`typedCompliance.js` is the explicit opt-in suite; legacy `driverCompliance.js`
-remains available for identifying migration work, not as a compatibility shim.
+The core Graph API accepts structural RDF/JS terms, not strings. Memory, file,
+SPARQL and Neo4j implement this profile and run `typedGraphComplianceTests` from
+`typedCompliance.js`. See [adapter conformance](CONFORMANCE.md) for the test
+commands and backend-specific limits. The string-based `driverComplianceTests`
+export is not a compatibility layer or evidence of typed conformance.
 
 ## Profile and API
 
 The supported profile is RDF 1.1 / RDF/JS structural terms: subject NamedNode or
 BlankNode, predicate NamedNode, object NamedNode/BlankNode/Literal; graph identity
 NamedNode or DefaultGraph. Terms may come from any factory; no instanceof checks
-or caller equals implementation is trusted. Core/memory have no external runtime
+or caller `equals` implementation is trusted. Core and memory have no external runtime
 dependencies. NamedNode values must be absolute IRIs (scheme, no forbidden IRI
 characters); relative IRIs are not resolved. Blank identifiers must be nonempty.
 Literals require a language string and NamedNode datatype. Language tags must be
@@ -28,15 +28,16 @@ illegal positions throw TypeError. Caller getter errors propagate unchanged.
   termType, so external equal terms reuse the open handle without conflating graph
   kinds. Closed handles are evicted; reacquisition shares the retained memory store.
 - `add(subject,predicate,object)` requires all three terms. Exact duplicate quads
-  remain a no-op (the preexisting set behavior); lexical/datatype/language-distinct
-  objects are distinct rows. Blank labels identify nodes within the client store.
+  remain a no-op; lexical/datatype/language-distinct
+  objects are distinct rows. Blank-node identity is adapter-specific; labels are
+  not portable identifiers across imports or remote responses.
 - `find/remove/has/count(subject?,predicate?,object?)`: only null or undefined
   are wildcards, independently in all three slots. Empty string and `*` are invalid.
 - `clear()` affects only the selected graph.
 - `find` returns a buffered Cursor. Existing `getTriple/getTriples` names are retained,
-  but memory rows are immutable RDF/JS Quads with `termType: 'Quad'`, `value: ''`,
+  but rows are immutable RDF/JS Quads with `termType: 'Quad'`, `value: ''`,
   subject/predicate/object/graph and structural `equals`. Terms have `equals` too.
-  Cursor iteration position/close behavior is unchanged. Snapshots survive graph
+  Snapshots survive graph
   mutations and client closure; returned values cannot mutate storage.
 - Inputs are synchronously detached before adapter invocation. Accepted operations
   remain in Graph's drain set; graph/client close invalidate new work immediately,
@@ -52,10 +53,11 @@ Status is one of `supported` (inherent), `configured` (enabled by configuration)
 The schema rejects unknown keys or statuses. Generic Client reports unknown, not
 inferred support. Memory explicitly advertises volatile storage, no transactions,
 no cross-graph atomicity, no streaming, and no duplicate quads. RDF 1.1 support is
-qualified by the graph-kind restrictions above. Dataset load/save is a subsequent
-API and is not implied by these capabilities.
+qualified by the graph-kind restrictions above. The separate
+[Dataset persistence API](DATASET-PERSISTENCE.md) requires explicit graph
+selections; these capabilities do not imply additional persistence guarantees.
 
-## Resource / failure contract
+## Memory resource and failure limits
 
 Memory has no filesystem, network, subprocess or API dependency. Validation and
 adapter failures reject the operation unchanged and are drained by close; there

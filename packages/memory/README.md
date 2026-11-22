@@ -1,18 +1,17 @@
 # @alt-javascript/jssgdbc-memory
 
-See the [breaking-change and capability guide](../../docs/breaking-changes.md)
-for typed-term migration, explicit Dataset persistence and recovery.
-
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
-## Local development
+JSSGDBC driver for in-memory RDF graphs. Stores typed RDF/JS terms in
+client-local, volatile storage without an external service.
 
-Experimental `0.0.0`, local-workspace-only package. Private metadata and a
-rejecting prepublish guard protect against accidental publication, not deliberate
-bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
-root; package imports below resolve through npm workspaces. See the [root README](../../README.md).
+## Install
 
-## Usage
+Experimental `0.0.0` package, available only through the local npm workspace.
+Run `npm ci` in the workspace before using the imports below. The package is
+private and has a prepublish guard; no registry release is supported.
+
+## Quick Start
 
 Importing this package auto-registers the in-memory driver. Then use `DriverManager.getClient()` to get a client:
 
@@ -52,24 +51,12 @@ try {
 }
 ```
 
-## Typed terms and Dataset persistence
+## RDF Terms and Dataset Load/Save
 
 Follow the [core typed contract](../core/README.md#typed-terms-and-explicit-datasets).
 Memory accepts structural RDF/JS terms from independent factories and returns
 immutable Quads. It depends only on core, with no external runtime dependencies.
 The optional full Dataset is a caller choice, not an implicit storage binding.
-
-Run `npm run test:dataset-memory` for the [executable workflow](../../test/verify-dataset-memory.js):
-independent `@rdfjs/data-model` terms and `@rdfjs/dataset` input, full Dataset
-load, lexical distinctions, graph identity, cross-graph blank isomorphism,
-explicit saves, empty replacement, preflight and partial-failure outcomes.
-
-Run `npm run test:memory-contract` for S01 acceptance: package safeguards, all
-core/memory/Dataset tests, the interoperability workflow, and the unchanged
-marked core/memory README examples. This is not repository-wide acceptance.
-Use `npm test` for offline repository checks and `npm run test:conformance` for
-mandatory real cross-adapter acceptance. This focused command alone does not
-establish remote adapter conformance.
 
 `loadDataset({graphs, factory})` and `saveDataset(dataset, {graphs, mode = 'merge'})`
 require explicit nonempty NamedNode/DefaultGraph selections. Replace clears empty
@@ -87,7 +74,7 @@ timeout or cancellation is provided. A hung adapter hook also blocks close.
 File, SPARQL and Neo4j implement the typed contract with distinct persistence
 and transaction boundaries; consult the migration guide and real acceptance logs.
 
-## Resource lifecycle
+## Resource Lifecycle
 
 Await idempotent graph/client closure, including in finally blocks. Close drains
 admitted work; it does not cancel it or delete data. An open client can reacquire
@@ -96,7 +83,7 @@ are detached buffered results, remain usable after owner close, and need their
 own close. Query results consume O(n) memory; there is no streaming guarantee.
 See the [core lifecycle contract](../core/README.md#resource-lifecycle).
 
-## URL Scheme
+## Connection URL
 
 This driver accepts the `jssgdbc:memory:` URL scheme:
 

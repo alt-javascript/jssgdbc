@@ -1,14 +1,15 @@
 # @alt-javascript/jssgdbc-sparql
 
-See the [breaking-change and capability guide](../../docs/breaking-changes.md)
-for typed-term migration, explicit Dataset persistence and recovery.
+JSSGDBC driver for SPARQL HTTP endpoints. Provides typed RDF graph operations
+and explicit Dataset load/save through SPARQL queries and updates.
 
-Triple-pattern access to a SPARQL HTTP endpoint.
+## Install
 
-Experimental `0.0.0`, local-workspace-only package. Private metadata and a
-rejecting prepublish guard protect against accidental publication, not deliberate
-bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
-root. Package imports below resolve through workspaces. Use ES modules and a
+Experimental `0.0.0` package, available only through the local npm workspace.
+Run `npm ci` in the workspace before using the imports below. The package is
+private and has a prepublish guard; no registry release is supported.
+
+Use ES modules and a
 runtime providing native `fetch`, `Headers`, `AbortController`, `URL` and
 `performance` (for example a maintained Node.js 22+ release). The package has no
 `engines` constraint and does not install a fetch polyfill.
@@ -18,7 +19,7 @@ client with `DriverManager.getClient` (not `Client.getClient`), using the exact
 prefix `jssgdbc:sparql:` followed by an HTTP(S) endpoint URL. If your application
 clears the registry, explicitly register a new exported `SparqlDriver`.
 
-## Read-only quick-start
+## Quick Start
 
 Save this block as an ES module and call `readExample(endpoint, headers)` with a
 trusted endpoint URL. It queries a fixed subject and predicate (without a
@@ -58,10 +59,18 @@ Endpoint configuration illustrations, **not certified or tested integrations**:
 | Wikidata (read-only; use Wikidata IRIs for useful results) | `https://query.wikidata.org/sparql` |
 | Local Fuseki-style dataset | `http://127.0.0.1:3030/dataset/sparql` |
 
-The second `getClient` argument is a configuration object: `headers` accepts
-native Headers-compatible input; `timeoutMs` must be a positive finite number
-and defaults to **30000** milliseconds. Protocol headers override supplied
-`Accept` for queries and `Content-Type` for updates.
+## Connection Properties
+
+Use `jssgdbc:sparql:<http(s)-endpoint>` as the connection URL. Pass optional
+configuration as the second argument to `DriverManager.getClient()`:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `headers` | None | Native `Headers`-compatible input, including authentication headers |
+| `timeoutMs` | `30000` | Positive finite request timeout in milliseconds |
+
+Protocol headers override supplied `Accept` for queries and `Content-Type` for
+updates.
 
 Queries use GET with a `query` parameter and request SPARQL JSON. Updates use
 POST with raw `application/sparql-update` bodies to the **same URL**. Separate
@@ -69,7 +78,7 @@ query/update URLs, form POST queries and other transports are not supported by
 this configuration. Check local server routing before enabling writes: a
 Fuseki-style `/sparql` URL alone does not imply update support.
 
-## Opt-in writable local example
+## Writable Endpoint
 
 **Never run this against a public read-only endpoint or valuable data.** Use a
 trusted, disposable local dataset whose single URL supports both query and
@@ -229,13 +238,6 @@ snapshots. At 10x volume, heap or endpoint/proxy request limits can fail first.
 GET query URLs also have server/proxy length limits. Bound selection/input sizes
 and await saves to avoid accumulating snapshots; there is no automatic chunking.
 A failed update can have an **unknown commit outcome**; do not blindly retry it.
-
-The README examples and shared compliance tests run offline against a narrow
-loopback HTTP fixture. These checks are not live-vendor validation and do not
-establish vendor behavior or endpoint availability. Run the separate disposable Fuseki acceptance with
-`npm run test:integration --workspace=packages/sparql`, or the aggregate
-`npm run test:conformance`. See [conformance](../core/test/CONFORMANCE.md)
-for pinned versions, evidence boundaries and cleanup diagnostics.
 
 ## Handle lifecycle
 

@@ -1,9 +1,8 @@
 # @alt-javascript/jssgdbc-dataset
 
-See the [breaking-change and capability guide](../../docs/breaking-changes.md)
-for typed-term migration, explicit Dataset persistence and recovery.
+A buffered, synchronous **full RDF/JS Dataset** implementation for local RDF operations. Create, filter, combine and compare datasets, then persist them explicitly through a JSSGDBC client. Core and memory do not depend on this optional package.
 
-Optional, buffered, synchronous **full RDF/JS Dataset** package. Core and memory have no dependency on this package. This workspace remains private and publish-guarded like the other workspaces.
+The package is private and publish-guarded.
 
 ```js
 import rdf from '@alt-javascript/jssgdbc-dataset'
@@ -16,11 +15,10 @@ console.log(edited.toCanonical()) // synchronous canonical N-Quads
 
 ## Explicit memory persistence
 
-Run `npm run test:docs` for the marked quickstart below, unchanged, or
-`npm run test:dataset-memory` for the broader independent-factory acceptance fixture.
-Run from the repository root after `npm ci` with Node.js 22+; these independent
-factory dependencies are already available in the workspace. This is a small,
-buffered example, not a streaming workflow.
+The example uses independent RDF/JS factories with the memory driver. It is a
+small, buffered workflow, not a streaming API. With Node.js 22+ and dependencies
+installed (`npm ci`), run `npm run test:dataset-memory` to check the persistence
+contract with independent factories.
 
 <!-- example:dataset-quickstart -->
 ```javascript
@@ -81,9 +79,13 @@ isomorphism, not label equality. See the [core persistence contract](../core/tes
 for preflight validation, per-graph DatasetSaveError outcomes and lack of atomicity.
 Memory's RDF 1.1 profile is narrower than a general Dataset: unsupported graph
 kinds and embedded quads are rejected before writes. This memory-only quickstart
-does not certify remote adapters; use the separate cross-adapter acceptance runners.
+does not certify remote adapters; see [adapter conformance](../core/test/CONFORMANCE.md)
+for cross-adapter checks.
 
-Exports: default/named `factory` implements DataFactory and DatasetFactory; named `dataset(quads?)` and `Dataset`. All Dataset-producing methods return this package's full Dataset, not DatasetCore. The independent N3 `DataFactory` and `Store` are exercised as inputs. Local edits have no persistence effects. The executable memory contract above verifies explicit persistence integration.
+## Exports
+
+The default export (also named `factory`) implements DataFactory and DatasetFactory.
+Named exports also include `dataset(quads?)` and `Dataset`. All Dataset-producing methods return this package's full Dataset, not DatasetCore. The independent N3 `DataFactory` and `Store` are exercised as inputs. Local edits have no persistence effects. The executable memory contract above verifies explicit persistence integration.
 
 ## Pinned contract and supported profile
 
@@ -128,7 +130,7 @@ Audited against the pinned IDL and method prose, including DatasetCore inheritan
 
 `reduce(fn, initialValue?)` follows Array semantics (including a TypeError on empty input with no initial value). Callback exceptions propagate. `import(stream)` is asynchronous only because the standard requires stream ingestion; all computational Dataset methods are synchronous. Node readable object streams are supported through their async iterator. Stream errors/premature close reject the promise; already admitted quads remain present (not transactional). `toStream()` takes a buffered snapshot at call time and respects Node consumption/backpressure. No network, subprocess or filesystem access occurs at runtime. Streams that never end remain pending; callers own cancellation/timeouts.
 
-## Algorithms, exact releases and license audit
+## Dependencies and canonicalization
 
 Inspected npm release metadata and installed license files, 2026-11-21. Runtime versions are exact and locked, including the normalizer's transitive canonicalizer to prevent accidental drift of its internal integration.
 
@@ -141,14 +143,14 @@ Inspected npm release metadata and installed license files, 2026-11-21. Runtime 
 | @rdfjs/to-ntriples | 3.0.1 | MIT | N-Quads serialization (despite package name) |
 | n3 | 2.13.12 | MIT | Dev-only independent DataFactory/Store/parser fixtures |
 
-Candidate inspection also considered `rdf-ext@2.6.0` (MIT), whose Dataset extends DatasetCore, and `rdf-dataset-ext@1.1.0` (MIT) with the older `rdf-canonize@^1.0.0` path. Neither is adopted wholesale: we need explicit adversarial containment coverage and a narrow dependency surface. `rdf-canonize@5.0.0` explicitly discourages direct use of its private `_canonizeSync` API; this package does not call it. Instead it calls the maintained public `@rdfjs/normalize@2.0.4` function, whose release owns integration with `RDFC10Sync`. That wrapper enforces `maxDeepIterations: 500`; options cannot override it. RDFC-1.0 is the current standardized successor to the normalization algorithm referenced by Dataset 1.0. This is not a claim of arbitrary RDF 1.2 support or unbounded canonicalization success.
+`rdf-canonize@5.0.0` explicitly discourages direct use of its private `_canonizeSync` API; this package does not call it. Instead it calls the maintained public `@rdfjs/normalize@2.0.4` function, whose release owns integration with `RDFC10Sync`. That wrapper enforces `maxDeepIterations: 500`; options cannot override it. RDFC-1.0 is the current standardized successor to the normalization algorithm referenced by Dataset 1.0. This is not a claim of arbitrary RDF 1.2 support or unbounded canonicalization success.
 
-Selected official W3C vectors are vendored under `test/fixtures/` from `w3c/rdf-canon` commit `5ffaaa13c0e19a2a2f9e60d0ecd9efaf3edab633`, under the W3C Software and Document License (see fixtures/LICENSE.md): 003, 020, 044, 057, 060, 076, 077 and negative poison input 074. They cover blank topology, named graphs, escaping and duplicate removal. They are a selected conformance sample, not the entire W3C suite.
+Selected official W3C vectors are vendored under `test/fixtures/` from `w3c/rdf-canon` commit `5ffaaa13c0e19a2a2f9e60d0ecd9efaf3edab633`, under the W3C Software and Document License (see [fixture license](test/fixtures/LICENSE.md)): 003, 020, 044, 057, 060, 076, 077 and negative poison input 074. They cover blank topology, named graphs, escaping and duplicate removal. They are a selected conformance sample, not the entire W3C suite.
 
 ## Failure modes and load limits
 
 This is an in-memory package, not a streaming database. Storage, callback snapshots, serializers and stream snapshots scale with dataset size. Representative ground-quad tests exercise 1,000 and 10,000 quads and report time/heap diagnostics, without machine-dependent performance assertions. Ground containment uses indexed membership checks. Blank-containing candidate construction is O(pattern × target); candidate lists and mapping snapshots consume memory. Blank-node embedding can be exponential on adversarial graphs. Its iterative search avoids recursion stack exhaustion but has **no timeout/work budget** and can block the event loop. Use a worker with an external time/memory limit for large or untrusted inputs; do not expose these operations directly on an untrusted request path.
 
-Canonicalization has an upstream 500-deep-iteration guard; exceeding it throws, including from `equals`, rather than silently returning false. The official poison graph verifies propagation and source immutability. There is no fallback to label-based equality. Invalid RDF terms fail with TypeError; stream failures preserve their original error object. Missing runtime modules fail normally at module import. Dependency availability is an installation concern, not a runtime network service. The repository audit currently reports pre-existing Mocha/serialize-javascript development advisories; no automatic broad dependency upgrades are made by this package.
+Canonicalization has an upstream 500-deep-iteration guard; exceeding it throws, including from `equals`, rather than silently returning false. The official poison graph verifies propagation and source immutability. There is no fallback to label-based equality. Invalid RDF terms fail with TypeError; stream failures preserve their original error object. Missing runtime modules fail normally at module import. Dependency availability is an installation concern, not a runtime network service.
 
-Run `npm test --workspace=packages/dataset`. Tests are offline after install and use only repository fixtures. A full repository test also includes this optional workspace; core/memory runtime dependency lists remain untouched.
+Run `npm test --workspace=packages/dataset`. Tests are offline after installation and use local fixtures.

@@ -1,17 +1,15 @@
 # @alt-javascript/jssgdbc-neo4j
 
-See the [breaking-change and capability guide](../../docs/breaking-changes.md)
-for typed-term migration, explicit Dataset persistence and recovery.
-
 Neo4j storage for the jssgdbc subject/predicate/object graph API. No arbitrary
 Cypher or SPARQL execution is exposed by the public graph API.
 
-## Local development and connection
+## Install
 
-Experimental `0.0.0`, local-workspace-only package. Private metadata and a
-rejecting prepublish guard protect against accidental publication, not deliberate
-bypass (scripts can be disabled). No registry release is supported. Run `npm ci` from the repository
-root. Package imports below resolve through workspaces.
+Experimental `0.0.0` package, available only through the local npm workspace.
+Run `npm ci` in the workspace before using the imports below. The package is
+private and has a prepublish guard; no registry release is supported.
+
+## Connection URL
 
 Importing the public package registers a driver once, without opening a connection.
 It also re-exports `DriverManager` and the core API. If you explicitly clear the
@@ -39,7 +37,7 @@ connect verifies connectivity, inspects storage compatibility non-destructively,
 installs three idempotent typed identity constraints. Incompatible storage or
 insufficient privileges fail connection; no automatic reset or migration occurs.
 
-## Executable examples
+## Quick Start
 
 These ES modules export callable functions. Pass your full jssgdbc URL and
 properties explicitly. Each call owns and awaits closure of its client, including
@@ -195,7 +193,6 @@ Dataset size, query breadth and caller concurrency. Splitting saves changes atom
 and blank scope. Timeouts bound individual work/waits, not memory or an overall
 retry deadline. Remove/clear retain orphan term and graph nodes; storage reclamation
 is operator-controlled. Release cursor/Dataset references to reclaim local memory.
-Bounded tests prove correctness on the pinned fixture, not production throughput.
 
 Always await `client.close()`. It is idempotent and marks the client closed
 immediately; existing graph handles then reject operations. Buffered cursors remain
@@ -204,41 +201,12 @@ operation plus a recognized native code, never native messages, causes, credenti
 or query parameters. Validation errors also avoid echoing inputs. Cleanup failures
 in these examples propagate (and can supersede an earlier operation failure).
 
-## Tests and disposable local setup
+## Compatibility
 
-From the repository root:
-
-```sh
-npm test --workspace=packages/neo4j
-npm run test:integration --workspace=packages/neo4j
-npm test
-```
-
-Default tests are offline and Docker-independent. Deterministic adapter tests are not backend proof; use the live runner or
-`npm run test:conformance` for current-source backend evidence. The live runner requires Docker
-with Compose, starts `neo4j:5.26.0-community`, waits for health, executes node:test
-typed smoke, Dataset durability/schema tests and all marked README examples, then shared typed Mocha compliance in a separate
-process. It prints the actual server version; tests must pass without skips.
-The supported/tested fixture is Neo4j **5.26.0**, not a claim about other versions.
-
-The runner owns a uniquely named Compose project and always attempts bounded
-teardown; startup, suite and teardown failures separately produce nonzero status.
-It uses only `jssgdbc:neo4j:bolt://127.0.0.1:17687`, database `neo4j`,
-`timeoutMs: 10000`, `connectionTimeoutMs: 2000`, and no credentials. There is no
-remote endpoint override. Compliance destructively resets fixture storage.
-Never point this suite at shared or production data.
-
-`compose.test.yml` disables authentication **only on the disposable loopback
-fixture**. Bolt is published on `127.0.0.1:17687`; HTTP is not published; data/logs
-are ephemeral tmpfs. Any local process can access it: use a trusted machine.
-Do not copy this auth-disabled configuration into a deployment or expose its port.
-
-For readiness failures check Docker/Compose availability, image-pull access and
-whether port 17687 is occupied. Concurrent fixture runs are unsupported. The health
-check runs `cypher-shell RETURN 1`; startup waits up to 240 seconds within a bounded
-subprocess. Failures are errors, not skips. Do not troubleshoot by disabling remote
-authentication or printing credentials/native error bodies. Run the offline suite
-to distinguish mapping/lifecycle failures from local service availability.
+The live integration fixture uses Neo4j **5.26.0 Community**. Other versions
+are not established by that coverage. Connections require permission to inspect
+adapter-owned records and create identity constraints; see [Storage Schema](SCHEMA.md).
+Use authentication and an appropriate TLS URI for deployments.
 
 ## Handle lifecycle
 
