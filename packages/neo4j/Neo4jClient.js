@@ -1,5 +1,6 @@
 import { Client } from '@alt-javascript/jssgdbc-core';
 import { Neo4jGraph } from './Neo4jGraph.js';
+import { CONSTRAINTS } from './RdfStorage.js';
 
 // Never retain native errors: their messages/causes may contain credentials or data.
 export function transportError(operation, error) {
@@ -21,20 +22,13 @@ export class Neo4jClient extends Client {
     this._closePromise = null;
   }
 
-  getGraph(name = '') {
-    this._checkClosed();
-    name ??= '';
-    if (typeof name !== 'string') throw new TypeError('Neo4j graph name must be a string');
-    return super.getGraph(name);
-  }
-
   _getGraph(name) {
     return new Neo4jGraph(this, name);
   }
 
   async _initialize() {
     await this._execute('initialize', 'write', async tx => {
-      await tx.run('CREATE CONSTRAINT jssgdbc_term_identity IF NOT EXISTS FOR (t:JssgdbcTerm) REQUIRE (t.graph, t.kind, t.value) IS UNIQUE', {});
+      for (const constraint of CONSTRAINTS) await tx.run(constraint, {});
     });
   }
 

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Neo4jDriver } from '../Neo4jDriver.js';
+import { CONSTRAINTS } from '../RdfStorage.js';
 
 const url = 'jssgdbc:neo4j:bolt://localhost:7687';
 const secretError = (code = 'Neo.ClientError.Security.Unauthorized') => Object.assign(new Error('secret password query params'), { code });
@@ -61,7 +62,7 @@ test('connect verifies connectivity and installs composite constraint before ret
   assert.deepEqual(f.calls.factory[1], { scheme: 'basic', principal: 'user', credentials: 'password' });
   assert.equal(f.calls.factory[2].connectionTimeout, 456);
   assert.equal(f.calls.factory[2].connectionAcquisitionTimeout, 456);
-  assert.match(f.calls.runs[0].query, /CREATE CONSTRAINT .* IF NOT EXISTS FOR \(t:JssgdbcTerm\) REQUIRE \(t.graph, t.kind, t.value\) IS UNIQUE/);
+  assert.deepEqual(f.calls.runs.map(run => run.query), CONSTRAINTS);
   assert.deepEqual(f.calls.runs[0].params, {});
   assert.equal(f.calls.sessions[0].options.database, 'test');
   assert.deepEqual(f.calls.transactions[0], { mode: 'write', config: { timeout: 123 } });
@@ -77,8 +78,8 @@ test('read/write operations buffer records and keep params separate with one clo
   assert.deepEqual(await client._query('RETURN $value', params), [{ value: 'exact' }]);
   await client._update('RETURN $value', params);
   assert.deepEqual(f.calls.transactions.map(t => t.mode), ['write', 'read', 'write']);
-  assert.equal(f.calls.runs[1].params, params);
-  assert.equal(f.calls.runs[1].query, 'RETURN $value');
+  assert.equal(f.calls.runs[CONSTRAINTS.length].params, params);
+  assert.equal(f.calls.runs[CONSTRAINTS.length].query, 'RETURN $value');
   assert.ok(f.calls.sessions.every(s => s.closes === 1));
   await client.close();
 });

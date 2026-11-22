@@ -1,12 +1,8 @@
-import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
+import { decodeTriple } from './RdfStorage.js';
 import neo4j from 'neo4j-driver';
 import { Graph, Cursor } from '@alt-javascript/jssgdbc-core';
 import { CypherBuilder } from './CypherBuilder.js';
 
-// The write lock survives removal of this temporary property until commit.
-// A separate statement ensures relationship MERGE runs only after lock acquisition.
-const LOCK_SUBJECT = 'MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})\n'
-  + 'SET s._jssgdbcLock = true\nREMOVE s._jssgdbcLock';
 const invalid = operation => new Error(`Neo4j ${operation}: invalid result`);
 
 function decodeRows(rows, aliases, operation, decode) {
@@ -30,10 +26,7 @@ export class Neo4jGraph extends Graph {
   async _find(subject, predicate, object) {
     const { query, params } = CypherBuilder.buildFind(this._name, subject, predicate, object);
     const rows = await this._client._query(query, params);
-    const triples = decodeRows(rows, ['subject', 'predicate', 'object'], 'find', triple => {
-      if (!Object.values(triple).every(value => typeof value === 'string')) throw new Error();
-      return Object.fromEntries(Object.entries(triple).map(([position, value]) => [position, normalizeTerm(value, position)]));
-    });
+    const triples = decodeRows(rows, ['subject', 'predicate', 'object'], 'find', triple => decodeTriple(triple, this._name));
     return new Cursor(triples);
   }
 
@@ -61,22 +54,23 @@ export class Neo4jGraph extends Graph {
     return values[0];
   }
 
-  async _add(subject, predicate, object) {
-    const { query, params } = CypherBuilder.buildAdd(this._name, subject, predicate, object);
-    const { graph, subjectKind } = params;
-    await this._client._execute('add', 'write', async tx => {
-      await tx.run(LOCK_SUBJECT, { graph, subjectKind, subject });
+  async _mutate(operation, { query, params }) {
+    const lock = CypherBuilder.buildLock(this._name);
+    await this._client._execute(operation, 'write', async tx => {
+      await tx.run(lock.query, lock.params);
       await tx.run(query, params);
     });
   }
 
+  async _add(subject, predicate, object) {
+    await this._mutate('add', CypherBuilder.buildAdd(this._name, subject, predicate, object));
+  }
+
   async _remove(subject, predicate, object) {
-    const { query, params } = CypherBuilder.buildRemove(this._name, subject, predicate, object);
-    await this._client._update(query, params);
+    await this._mutate('remove', CypherBuilder.buildRemove(this._name, subject, predicate, object));
   }
 
   async _clear() {
-    const { query, params } = CypherBuilder.buildClear(this._name);
-    await this._client._update(query, params);
+    await this._mutate('clear', CypherBuilder.buildClear(this._name));
   }
 }

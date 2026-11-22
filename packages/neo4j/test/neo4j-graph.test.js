@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import neo4j from 'neo4j-driver';
 import { Neo4jClient, Neo4jDriver, Neo4jGraph, CypherBuilder, Cursor, DriverManager } from '../index.js';
 
+import { defaultGraph, XSD_STRING, RDF_LANG_STRING, snapshotTerm } from '@alt-javascript/jssgdbc-core';
+import { encodeTerm, graphKey } from '../RdfStorage.js';
+const nn = value => ({ termType: 'NamedNode', value });
+const bn = value => ({ termType: 'BlankNode', value });
+const lit = (value, datatype = XSD_STRING, language = '') => ({ termType: 'Literal', value, language, datatype: nn(datatype) });
+const stored = (term, graph = defaultGraph()) => ({ ...encodeTerm(term), graph: graphKey(graph) });
 const row = values => new neo4j.Record(Object.keys(values), Object.values(values));
 function fixture() {
   const state = { records: [], calls: [], sessions: 0, closed: 0, transactions: 0 };
@@ -35,23 +41,23 @@ test('public exports and singleton registration', () => {
   assert.ok(DriverManager.getDrivers().some(driver => driver instanceof Neo4jDriver));
 });
 
-test('graph names normalize before caching and reject nonstrings without echoing', () => {
+test('graph names cache by structural identity and reject obsolete strings', () => {
   const { client } = fixture();
   const graph = client.getGraph();
   assert.ok(graph instanceof Neo4jGraph);
-  assert.equal(graph, client.getGraph(null));
+  assert.equal(graph, client.getGraph({ termType: 'DefaultGraph', value: '' }));
   assert.equal(graph, client.getGraph(undefined));
-  assert.equal(graph, client.getGraph(''));
-  assert.notEqual(graph, client.getGraph('named'));
-  for (const name of [1, {}, [], new String('secret')]) assert.throws(() => client.getGraph(name), /graph name must be a string/);
+  assert.notEqual(graph, client.getGraph(nn('urn:named')));
+  assert.equal(client.getGraph(nn('urn:named')), client.getGraph(nn('urn:named')));
+  for (const name of [null, '', 'named', 1, {}, [], new String('secret')]) assert.throws(() => client.getGraph(name), /RDF\/JS term/);
 });
 
 test('all pattern hooks forward all eight wildcard masks and graph scope', async () => {
   const { client, state } = fixture();
-  for (const name of ['', 'named\" MATCH (n) DELETE n']) {
+  for (const name of [defaultGraph(), nn('urn:named')]) {
     const graph = client.getGraph(name);
     for (let mask = 0; mask < 8; mask++) {
-      const terms = ['_:s', 'urn:p', String.raw`"exact\\\""@en`].map((v, i) => mask & (1 << i) ? v : null);
+      const terms = [bn('s'), nn('urn:p'), lit('exact\\"', RDF_LANG_STRING, 'en')].map((v, i) => mask & (1 << i) ? v : null);
       for (const [method, builder, records] of [
         ['find', 'buildFind', []], ['has', 'buildHas', [row({ exists: false })]],
         ['count', 'buildCount', [row({ count: neo4j.int(0) })]], ['remove', 'buildRemove', []]
@@ -60,19 +66,23 @@ test('all pattern hooks forward all eight wildcard masks and graph scope', async
         const result = await graph[method](...terms);
         assert.deepEqual(state.calls.at(-1), CypherBuilder[builder](name, ...terms));
         if (method === 'find') assert.deepEqual(result.getTriples(), []);
-        if (method === 'remove') assert.equal(result, undefined);
+        if (method === 'remove') {
+          assert.equal(result, undefined);
+          assert.deepEqual(state.calls.at(-2), CypherBuilder.buildLock(name));
+        }
       }
     }
     assert.equal(await graph.clear(), undefined);
     assert.deepEqual(state.calls.at(-1), CypherBuilder.buildClear(name));
+    assert.deepEqual(state.calls.at(-2), CypherBuilder.buildLock(name));
   }
   assert.equal(state.closed, state.sessions);
 });
 
-test('find buffers exact strings in a core Cursor after session cleanup', async () => {
+test('find buffers structural terms in a core Cursor after session cleanup', async () => {
   const { client, state } = fixture();
-  const triples = [String.raw`"quotes \\ and ' injection"@en`, '_:blank', 'urn:iri'].map(object => ({ subject: '_:s', predicate: 'urn:p', object }));
-  state.records = triples.map(row);
+  const triples = [lit('quotes \\ and injection', RDF_LANG_STRING, 'en'), bn('blank'), nn('urn:iri'), lit('01', 'urn:int'), lit('1', 'urn:int')].map(object => ({ subject: snapshotTerm(bn('s')), predicate: snapshotTerm(nn('urn:p')), object: snapshotTerm(object) }));
+  state.records = triples.map(t => row({ subject: stored(t.subject), predicate: t.predicate.value, object: stored(t.object) }));
   const cursor = await client.getGraph().find();
   assert.ok(cursor instanceof Cursor);
   assert.equal(state.closed, 1);
@@ -83,17 +93,14 @@ test('find buffers exact strings in a core Cursor after session cleanup', async 
   assert.deepEqual(iterated, triples);
 });
 
-test('add locks subject before builder MERGE in one managed transaction, including self loops and reverse endpoints', async () => {
+test('add locks graph before builder MERGE in one managed transaction, including self loops and reverse endpoints', async () => {
   const { client, state } = fixture();
-  for (const terms of [['_:s', 'urn:p', '_:s'], ['urn:a', 'urn:p', 'urn:b'], ['urn:b', 'urn:p', 'urn:a']]) {
+  for (const terms of [[bn('s'), nn('urn:p'), bn('s')], [nn('urn:a'), nn('urn:p'), nn('urn:b')], [nn('urn:b'), nn('urn:p'), nn('urn:a')]]) {
     const start = state.calls.length;
-    assert.equal(await client.getGraph('named').add(...terms), undefined);
+    assert.equal(await client.getGraph(nn('urn:named')).add(...terms), undefined);
     const [lock, add] = state.calls.slice(start);
-    assert.match(lock.query, /MERGE \(s:JssgdbcTerm/);
-    assert.match(lock.query, /SET s\._jssgdbcLock = true/);
-    assert.match(lock.query, /REMOVE s\._jssgdbcLock/);
-    assert.deepEqual(lock.params, { graph: 'named', subjectKind: terms[0].startsWith('_:') ? 'blank' : 'iri', subject: terms[0] });
-    assert.deepEqual(add, CypherBuilder.buildAdd('named', ...terms));
+    assert.deepEqual(lock, CypherBuilder.buildLock(nn('urn:named')));
+    assert.deepEqual(add, CypherBuilder.buildAdd(nn('urn:named'), ...terms));
   }
   assert.equal(state.transactions, 3);
   assert.equal(state.closed, 3);
@@ -103,11 +110,11 @@ test('managed retries replay lock plus add and second-statement failures close t
   const { client, state } = fixture();
   state.failure = Object.assign(new Error('secret'), { code: 'Neo.TransientError.Transaction.DeadlockDetected' });
   state.failAt = 2;
-  await assert.rejects(client.getGraph().add('urn:a', 'urn:p', 'urn:b'), { message: 'Neo4j add failed (Neo.TransientError.Transaction.DeadlockDetected)' });
+  await assert.rejects(client.getGraph().add(nn('urn:a'), nn('urn:p'), nn('urn:b')), { message: 'Neo4j add failed (Neo.TransientError.Transaction.DeadlockDetected)' });
   assert.equal(state.closed, 1);
   state.calls = [];
   state.retry = true;
-  await client.getGraph().add('urn:a', 'urn:p', 'urn:b');
+  await client.getGraph().add(nn('urn:a'), nn('urn:p'), nn('urn:b'));
   assert.equal(state.calls.length, 4);
   assert.deepEqual(state.calls.slice(0, 2), state.calls.slice(2));
   assert.equal(state.transactions, 2);
@@ -118,9 +125,9 @@ test('invalid builder inputs fail before allocating a session', async () => {
   const { client, state } = fixture();
   const graph = client.getGraph();
   for (const method of ['add', 'remove', 'find', 'has', 'count']) {
-    await assert.rejects(graph[method]('"secret"', 'urn:p', 'urn:o'), /subject/);
-    await assert.rejects(graph[method]('urn:s', '_:secret', 'urn:o'), /predicate/);
-    await assert.rejects(graph[method]('urn:s', 'urn:p', {}), /object/);
+    await assert.rejects(graph[method](lit('secret'), nn('urn:p'), nn('urn:o')), /subject/);
+    await assert.rejects(graph[method](nn('urn:s'), bn('secret'), nn('urn:o')), /predicate/);
+    await assert.rejects(graph[method](nn('urn:s'), nn('urn:p'), {}), /object/);
   }
   await assert.rejects(graph.add(), /subject/);
   assert.equal(state.sessions, 0);
@@ -132,6 +139,36 @@ test('find rejects malformed aliases/types with safe errors after closing sessio
     { keys: ['subject', 'predicate', 'object'], get() { throw new Error('secret'); } }]) {
     state.records = [bad];
     await assert.rejects(client.getGraph().find(), { message: 'Neo4j find: invalid result' });
+    assert.equal(state.closed, state.sessions);
+  }
+});
+
+test('find rejects late corrupt typed records, foreign partitions and invalid RDF positions', async () => {
+  const { client, state } = fixture();
+  const good = { subject: stored(bn('shared')), predicate: 'urn:p', object: stored(lit('secret')) };
+  for (const bad of [
+    { ...good, subject: stored(lit('secret')) },
+    { ...good, predicate: 'secret' },
+    { ...good, object: { ...good.object, key: 'secret' } },
+    { ...good, object: stored(nn('urn:o'), nn('urn:foreign')) },
+    { ...good, object: { ...good.object, value: 42 } },
+    { ...good, object: { ...good.object, language: 'en' } }
+  ]) {
+    state.records = [row(good), row(bad)];
+    await assert.rejects(client.getGraph().find(), { message: 'Neo4j find: invalid result' });
+    assert.equal(state.closed, state.sessions);
+  }
+});
+
+test('remove and clear lock failures prevent mutation and cleanup failures reject success', async () => {
+  for (const method of ['remove', 'clear']) {
+    const { client, state } = fixture();
+    state.failure = Object.assign(new Error('secret'), { code: 'ServiceUnavailable' });
+    await assert.rejects(client.getGraph()[method](), { message: `Neo4j ${method} failed (ServiceUnavailable)` });
+    assert.deepEqual(state.calls, [CypherBuilder.buildLock()]);
+    state.failure = null;
+    state.cleanupFailure = new Error('secret');
+    await assert.rejects(client.getGraph()[method](), { message: 'Neo4j session close failed' });
     assert.equal(state.closed, state.sessions);
   }
 });
@@ -171,7 +208,7 @@ test('query and cleanup failures are both visible and redacted', async () => {
   state.cleanupFailure = new Error('secret cleanup');
   for (const [operation, promise] of [
     ['query', client.getGraph().find()],
-    ['add', client.getGraph().add('urn:s', 'urn:p', 'urn:o')]
+    ['add', client.getGraph().add(nn('urn:s'), nn('urn:p'), nn('urn:o'))]
   ]) await assert.rejects(promise, error => {
     assert.deepEqual(error.errors.map(e => e.message), [
       `Neo4j ${operation} failed (Neo.ClientError.Statement.SyntaxError)`, 'Neo4j session close failed'
@@ -192,10 +229,10 @@ test('graph close and retained handles after client close fail before I/O', asyn
   const graph = client.getGraph();
   await graph.close();
   await assert.rejects(graph.find(), /Graph is closed/);
-  const retained = client.getGraph('retained');
+  const retained = client.getGraph(nn('urn:retained'));
   const closing = client.close();
   assert.throws(() => client.getGraph(), /Client is closed/);
-  for (const method of ['add', 'remove', 'find', 'has', 'count', 'clear']) await assert.rejects(retained[method]('urn:s', 'urn:p', 'urn:o'), /(?:Client|Graph) is closed/);
+  for (const method of ['add', 'remove', 'find', 'has', 'count', 'clear']) await assert.rejects(retained[method](nn('urn:s'), nn('urn:p'), nn('urn:o')), /(?:Client|Graph) is closed/);
   await closing;
   assert.equal(state.sessions, 0);
 });

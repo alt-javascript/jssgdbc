@@ -1,101 +1,48 @@
-import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
+import { snapshotTerm, defaultGraph } from '@alt-javascript/jssgdbc-core';
+import { encodeTerm, graphKey, LABELS } from './RdfStorage.js';
 
-const ADD_QUERY = 'MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})\n'
-  + 'MERGE (o:JssgdbcTerm {graph: $graph, kind: $objectKind, value: $object})\n'
-  + 'MERGE (s)-[r:JSSGDBC_TRIPLE {predicate: $predicate}]->(o)';
+const ADD_QUERY = `MERGE (s:${LABELS.term} {graph: $graph, key: $subject.key})
+ON CREATE SET s += $subject
+MERGE (o:${LABELS.term} {graph: $graph, key: $object.key})
+ON CREATE SET o += $object
+MERGE (s)-[r:${LABELS.triple} {predicate: $predicate}]->(o)`;
+const MATCH_QUERY = `MATCH (s:${LABELS.term} {graph: $graph})-[r:${LABELS.triple}]->(o:${LABELS.term} {graph: $graph})`;
 
-function requireString(value, operation, position, index) {
-  if (typeof value !== 'string') {
-    throw new TypeError(`${operation}: ${position} (argument ${index}) must be a string`);
-  }
-  return value;
-}
-
-function normalizeGraph(graphName, operation) {
-  return requireString(graphName ?? '', operation, 'graphName', 1);
-}
-
-// Canonical string identity without coercing typed lexical values.
-function encodeTerm(value, operation, position, index) {
-  requireString(value, operation, position, index);
-  const kind = value.startsWith('"') || value.startsWith("'") ? 'literal'
-    : value.startsWith('_:') ? 'blank' : 'iri';
-  if (position === 'subject' && kind === 'literal') {
-    throw new TypeError(`${operation}: subject (argument ${index}) must be an IRI or blank node`);
-  }
-  if (position === 'predicate' && kind !== 'iri') {
-    throw new TypeError(`${operation}: predicate (argument ${index}) must be an IRI`);
-  }
-  return { kind, value: normalizeTerm(value, position) };
-}
-
-const MATCH_QUERY = 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})';
-
-function buildPattern(operation, graphName, subject, predicate, object, ending) {
-  const params = { graph: normalizeGraph(graphName, operation) };
+function buildPattern(graph, subject, predicate, object, ending) {
+  const params = { graph: graphKey(graph) };
   const filters = [];
-  for (const [value, position, index, binding] of [
-    [subject, 'subject', 2, 's'],
-    [predicate, 'predicate', 3, 'r'],
-    [object, 'object', 4, 'o'],
-  ]) {
-    if (value === null || value === undefined) continue;
-    const term = encodeTerm(value, operation, position, index);
-    if (position === 'predicate') {
-      filters.push('r.predicate = $predicate');
-    } else {
-      params[`${position}Kind`] = term.kind;
-      filters.push(`${binding}.kind = $${position}Kind`, `${binding}.value = $${position}`);
-    }
-    params[position] = term.value;
+  for (const [value, position, binding] of [[subject, 'subject', 's'], [predicate, 'predicate', 'r'], [object, 'object', 'o']]) {
+    if (value == null) continue;
+    const term = encodeTerm(value, position);
+    params[position] = position === 'predicate' ? term.value : term.key;
+    filters.push(position === 'predicate' ? 'r.predicate = $predicate' : `${binding}.key = $${position}`);
   }
-  return {
-    query: MATCH_QUERY + (filters.length ? `\nWHERE ${filters.join(' AND ')}` : '') + `\n${ending}`,
-    params,
-  };
+  return { query: MATCH_QUERY + (filters.length ? `\nWHERE ${filters.join(' AND ')}` : '') + `\n${ending}`, params };
 }
 
-/** Pure, parameterized statements; transport and result decoding belong to the adapter. */
+/** Pure parameterized statements. Every mutation must acquire buildLock first
+ * in the SAME transaction. The separate statement establishes the lock before
+ * relationship MERGE and serializes add/remove/clear/Dataset replacement. */
 export class CypherBuilder {
-  static buildFind(graphName, subject, predicate, object) {
-    return buildPattern('buildFind', graphName, subject, predicate, object,
-      'RETURN s.value AS subject, r.predicate AS predicate, o.value AS object');
+  static buildLock(graph = defaultGraph()) {
+    return { query: `MERGE (g:${LABELS.graph} {key: $graph})\nSET g._jssgdbcLock = true\nREMOVE g._jssgdbcLock`, params: { graph: graphKey(graph) } };
   }
-
-  static buildHas(graphName, subject, predicate, object) {
-    return buildPattern('buildHas', graphName, subject, predicate, object,
-      'RETURN count(r) > 0 AS exists');
+  static buildFind(graph, subject, predicate, object) {
+    return buildPattern(graph, subject, predicate, object, 'RETURN properties(s) AS subject, r.predicate AS predicate, properties(o) AS object');
   }
-
-  static buildCount(graphName, subject, predicate, object) {
-    return buildPattern('buildCount', graphName, subject, predicate, object,
-      'RETURN count(r) AS count');
+  static buildHas(graph, subject, predicate, object) {
+    return buildPattern(graph, subject, predicate, object, 'RETURN count(r) > 0 AS exists');
   }
-
-  static buildRemove(graphName, subject, predicate, object) {
-    return buildPattern('buildRemove', graphName, subject, predicate, object, 'DELETE r');
+  static buildCount(graph, subject, predicate, object) {
+    return buildPattern(graph, subject, predicate, object, 'RETURN count(r) AS count');
   }
-
-  static buildClear(graphName) {
-    return buildPattern('buildClear', graphName, null, null, null, 'DELETE r');
+  static buildRemove(graph, subject, predicate, object) {
+    return buildPattern(graph, subject, predicate, object, 'DELETE r');
   }
-
-  static buildAdd(graphName, subject, predicate, object) {
-    const operation = 'buildAdd';
-    const graph = normalizeGraph(graphName, operation);
-    const s = encodeTerm(subject, operation, 'subject', 2);
-    const p = encodeTerm(predicate, operation, 'predicate', 3);
-    const o = encodeTerm(object, operation, 'object', 4);
-    return {
-      query: ADD_QUERY,
-      params: {
-        graph,
-        subjectKind: s.kind,
-        subject: s.value,
-        predicate: p.value,
-        objectKind: o.kind,
-        object: o.value,
-      },
-    };
+  static buildClear(graph) { return this.buildRemove(graph); }
+  static buildAdd(graph, subject, predicate, object) {
+    return { query: ADD_QUERY, params: { graph: graphKey(graph),
+      subject: encodeTerm(subject, 'subject'), predicate: snapshotTerm(predicate, 'predicate').value,
+      object: encodeTerm(object) } };
   }
 }

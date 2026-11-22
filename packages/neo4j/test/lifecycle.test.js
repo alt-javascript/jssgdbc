@@ -4,7 +4,10 @@ import { Neo4jClient, transportError } from '../Neo4jClient.js';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const methods = ['add', 'remove', 'find', 'has', 'count', 'clear'];
-const triple = ['urn:s', 'urn:p', 'urn:o'];
+import { defaultGraph } from '@alt-javascript/jssgdbc-core';
+import { encodeTerm } from '../RdfStorage.js';
+const nn = value => ({ termType: 'NamedNode', value });
+const triple = ['urn:s', 'urn:p', 'urn:o'].map(nn);
 function fixture() {
   const events = [], data = new Map();
   const state = { events, data, gate: null, cleanupGate: null, fail: false, driverFail: false };
@@ -15,8 +18,8 @@ function fixture() {
         events.push('run');
         if (state.gate) await state.gate.promise;
         if (state.fail) throw new Error('secret query password');
-        if (query.includes('CREATE') || query.includes('MERGE (o:')) data.set(params.graph, triple);
-        const row = { subject: 'urn:s', predicate: 'urn:p', object: 'urn:o' };
+        if (query.includes('MERGE (o:')) data.set(params.graph, triple);
+        const row = { subject: { ...encodeTerm(triple[0]), graph: params.graph }, predicate: 'urn:p', object: { ...encodeTerm(triple[2]), graph: params.graph } };
         return { records: data.has(params.graph) ? [{ keys: Object.keys(row), get: key => row[key] }] : [] };
       } });
       return { executeRead: execute, executeWrite: execute, async close() {
@@ -38,7 +41,7 @@ async function rejected(graph) {
 test('lifecycle default/named reacquisition and detached cursors', async () => {
   const f = fixture(), client = f.client;
   try {
-    for (const name of ['', 'urn:named']) {
+    for (const name of [defaultGraph(), nn('urn:named')]) {
       const old = client.getGraph(name);
       await old.add(...triple);
       const cursor = await old.find();
@@ -54,7 +57,7 @@ test('lifecycle default/named reacquisition and detached cursors', async () => {
       assert.equal(await cursor.next(), true);
       cursor.close();
     }
-    const owned = [client.getGraph(), client.getGraph('urn:named')];
+    const owned = [client.getGraph(), client.getGraph(nn('urn:named'))];
     await client.close();
     for (const graph of owned) await rejected(graph);
     assert.throws(() => client.getGraph(), /closed/);
@@ -101,7 +104,7 @@ test('lifecycle preserves sanitized operation and session failures while drainin
 test('lifecycle attempts all owned cleanups and repeats original aggregate failure', async () => {
   const f = fixture(); f.driverFail = true;
   const gate = deferred();
-  const first = f.client.getGraph(), second = f.client.getGraph('urn:named');
+  const first = f.client.getGraph(), second = f.client.getGraph(nn('urn:named'));
   first._close = async () => { await gate.promise; throw transportError('graph close', new Error('secret')); };
   second._close = () => { throw transportError('graph close', new Error('secret')); };
   const firstClose = first.close();

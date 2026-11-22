@@ -1,210 +1,114 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CypherBuilder } from '../index.js';
-// The workspace runner explicitly lists this file; include the contract regressions.
+import { defaultGraph, termKey, XSD_STRING, RDF_LANG_STRING } from '@alt-javascript/jssgdbc-core';
+import { CypherBuilder as B } from '../index.js';
+import { encodeTerm, decodeTerm, graphKey, STORAGE_VERSION, STORAGE_PROFILE, CONSTRAINTS } from '../RdfStorage.js';
 import './lossless.test.js';
 
-const query = 'MERGE (s:JssgdbcTerm {graph: $graph, kind: $subjectKind, value: $subject})\n'
-  + 'MERGE (o:JssgdbcTerm {graph: $graph, kind: $objectKind, value: $object})\n'
-  + 'MERGE (s)-[r:JSSGDBC_TRIPLE {predicate: $predicate}]->(o)';
+const nn = value => ({ termType: 'NamedNode', value });
+const bn = value => ({ termType: 'BlankNode', value });
+const lit = (value, datatype = XSD_STRING, language = '') => ({ termType: 'Literal', value, language, datatype: nn(datatype) });
+const graphs = [undefined, defaultGraph(), nn('urn:g')];
+const subjects = [nn('urn:s'), bn('s')];
+const objects = [nn('urn:o'), bn('o'), lit('hello'), lit('hello', RDF_LANG_STRING, 'en'), lit('01', 'urn:type')];
+const addQuery = `MERGE (s:JssgdbcRdfTerm {graph: $graph, key: $subject.key})
+ON CREATE SET s += $subject
+MERGE (o:JssgdbcRdfTerm {graph: $graph, key: $object.key})
+ON CREATE SET o += $object
+MERGE (s)-[r:JSSGDBC_RDF_TRIPLE {predicate: $predicate}]->(o)`;
+const match = 'MATCH (s:JssgdbcRdfTerm {graph: $graph})-[r:JSSGDBC_RDF_TRIPLE]->(o:JssgdbcRdfTerm {graph: $graph})';
+const endings = { buildFind: 'RETURN properties(s) AS subject, r.predicate AS predicate, properties(o) AS object',
+  buildHas: 'RETURN count(r) > 0 AS exists', buildCount: 'RETURN count(r) AS count', buildRemove: 'DELETE r' };
+const wheres = ['', 's.key = $subject', 'r.predicate = $predicate', 's.key = $subject AND r.predicate = $predicate',
+  'o.key = $object', 's.key = $subject AND o.key = $object', 'r.predicate = $predicate AND o.key = $object',
+  's.key = $subject AND r.predicate = $predicate AND o.key = $object'];
 
-const subjects = [['urn:s', 'iri'], ['<urn:s>', 'iri'], ['_:s', 'blank']];
-const objects = [['urn:o', 'iri'], ['<urn:o>', 'iri'], ['_:o', 'blank'],
-  ['"hello"', 'literal'], ['"hello"@en', 'literal'], ['"1"^^<urn:type>', 'literal']];
-for (const graph of [undefined, null, '', 'named']) {
-  for (const [subject, subjectKind] of subjects) {
-    for (const [object, objectKind] of objects) {
-      test(`buildAdd fixture ${JSON.stringify([graph, subject, object])}`, () => {
-        assert.deepEqual(CypherBuilder.buildAdd(graph, subject, 'urn:p', object), {
-          query, params: { graph: graph ?? '', subjectKind, subject: subject.replace(/^<|>$/g, ''), predicate: 'urn:p', objectKind, object: object.startsWith('<') ? object.slice(1, -1) : object },
-        });
-      });
-    }
-  }
-}
-
-test('rejects empty terms and canonicalizes bracketed IRIs', () => {
-  assert.throws(() => CypherBuilder.buildAdd('', '', '', ''), TypeError);
-  assert.deepEqual(CypherBuilder.buildAdd('', 'urn:s', 'urn:p', 'urn:o').params,
-    CypherBuilder.buildAdd('', '<urn:s>', '<urn:p>', '<urn:o>').params);
-});
-
-test('hostile strings in every position remain parameters, never Cypher text', () => {
-  const payloads = ['x`}) MATCH (n) DETACH DELETE n //', 'x\nRETURN 42; //', 'x\\\"\u0000雪'];
-  for (const payload of payloads) {
-    for (let position = 0; position < 4; position++) {
-      const args = ['graph', 'urn:subject', 'urn:predicate', 'urn:object'];
-      args[position] = payload;
-      if (position > 0) { assert.throws(() => CypherBuilder.buildAdd(...args), TypeError); continue; }
-      const result = CypherBuilder.buildAdd(...args);
-      assert.equal(result.query, query);
-      assert.equal(result.params[['graph', 'subject', 'predicate', 'object'][position]], payload);
-      assert.equal(result.query.includes(payload), false);
-    }
-  }
-});
-
-const match = 'MATCH (s:JssgdbcTerm {graph: $graph})-[r:JSSGDBC_TRIPLE]->(o:JssgdbcTerm {graph: $graph})';
-const endings = {
-  buildFind: 'RETURN s.value AS subject, r.predicate AS predicate, o.value AS object',
-  buildHas: 'RETURN count(r) > 0 AS exists',
-  buildCount: 'RETURN count(r) AS count',
-  buildRemove: 'DELETE r',
-};
-// Explicit fixtures independent of the builder's filter-generation loop.
-const patterns = [
-  [[null, null, null], '', {}],
-  [['urn:s', null, null], 's.kind = $subjectKind AND s.value = $subject', { subjectKind: 'iri', subject: 'urn:s' }],
-  [[null, 'urn:p', null], 'r.predicate = $predicate', { predicate: 'urn:p' }],
-  [[null, null, 'urn:o'], 'o.kind = $objectKind AND o.value = $object', { objectKind: 'iri', object: 'urn:o' }],
-  [['urn:s', 'urn:p', null], 's.kind = $subjectKind AND s.value = $subject AND r.predicate = $predicate', { subjectKind: 'iri', subject: 'urn:s', predicate: 'urn:p' }],
-  [['urn:s', null, 'urn:o'], 's.kind = $subjectKind AND s.value = $subject AND o.kind = $objectKind AND o.value = $object', { subjectKind: 'iri', subject: 'urn:s', objectKind: 'iri', object: 'urn:o' }],
-  [[null, 'urn:p', 'urn:o'], 'r.predicate = $predicate AND o.kind = $objectKind AND o.value = $object', { predicate: 'urn:p', objectKind: 'iri', object: 'urn:o' }],
-  [['urn:s', 'urn:p', 'urn:o'], 's.kind = $subjectKind AND s.value = $subject AND r.predicate = $predicate AND o.kind = $objectKind AND o.value = $object', { subjectKind: 'iri', subject: 'urn:s', predicate: 'urn:p', objectKind: 'iri', object: 'urn:o' }],
-];
-for (const [method, ending] of Object.entries(endings)) {
-  for (const graph of [undefined, null, '', 'named']) {
-    for (const [terms, where, params] of patterns) {
-      test(`${method} wildcard fixture ${JSON.stringify([graph, ...terms])}`, () => {
-        const expected = { query: match + (where ? `\nWHERE ${where}` : '') + `\n${ending}`, params: { graph: graph ?? '', ...params } };
-        assert.deepEqual(CypherBuilder[method](graph, ...terms), expected);
-        assert.deepEqual(CypherBuilder[method](graph, ...terms.map(v => v === null ? undefined : v)), expected);
-      });
-    }
-  }
-
-  test(`${method} exact term kinds, empty filters and distinct spellings`, () => {
-    for (const [subject, subjectKind] of subjects) {
-      for (const [object, objectKind] of objects) {
-        assert.deepEqual(CypherBuilder[method]('', subject, 'urn:p', object), {
-          query: `${match}\nWHERE ${patterns[7][1]}\n${ending}`,
-          params: { graph: '', subjectKind, subject: subject.replace(/^<|>$/g, ''), predicate: 'urn:p', objectKind, object: object.startsWith('<') ? object.slice(1, -1) : object },
-        });
-      }
-    }
-    assert.deepEqual(CypherBuilder[method]('', 'urn:s', 'urn:p', 'urn:o').params,
-      CypherBuilder[method]('', '<urn:s>', '<urn:p>', '<urn:o>').params);
-    assert.deepEqual(CypherBuilder[method](), { query: `${match}\n${ending}`, params: { graph: '' } });
-  });
-
-  test(`${method} rejects invalid concrete arguments and kinds with contextual redacted errors`, () => {
-    for (let i = 0; i < 4; i++) {
-      for (const value of [0, false, NaN, 1n, Symbol('secret'), [], {}, new String('secret'), { toString() { throw Error('coercion'); } }]) {
-        const args = ['g', 'urn:s', 'urn:p', 'urn:o'];
-        args[i] = value;
-        assert.throws(() => CypherBuilder[method](...args), {
-          name: 'TypeError', message: `${method}: ${positions[i]} (argument ${i + 1}) must be a string`,
-        });
-      }
-    }
-    for (const value of ['"secret"', "'secret'"]) {
-      assert.throws(() => CypherBuilder[method]('', value), {
-        name: 'TypeError', message: `${method}: subject (argument 2) must be an IRI or blank node`,
-      });
-    }
-    for (const value of ['"secret"', "'secret'", '_:secret']) {
-      assert.throws(() => CypherBuilder[method]('', null, value), {
-        name: 'TypeError', message: `${method}: predicate (argument 3) must be an IRI`,
-      });
+for (const graph of graphs) for (const subject of subjects) for (const object of objects) {
+  test(`typed CRUD ${JSON.stringify([graph, subject, object])}`, () => {
+    const expected = term => ({ key: termKey(term), termType: term.termType, value: term.value,
+      language: term.language ?? '', datatype: term.datatype?.value ?? '' });
+    assert.deepEqual(B.buildAdd(graph, subject, nn('urn:p'), object), { query: addQuery,
+      params: { graph: termKey(graph ?? defaultGraph()), subject: expected(subject), predicate: 'urn:p', object: expected(object) } });
+    for (const [method, ending] of Object.entries(endings)) for (let mask = 0; mask < 8; mask++) {
+      const terms = [subject, nn('urn:p'), object].map((term, i) => mask & (1 << i) ? term : null);
+      const params = { graph: termKey(graph ?? defaultGraph()) };
+      if (mask & 1) params.subject = termKey(subject);
+      if (mask & 2) params.predicate = 'urn:p';
+      if (mask & 4) params.object = termKey(object);
+      const expected = { query: match + (wheres[mask] ? `\nWHERE ${wheres[mask]}` : '') + `\n${ending}`, params };
+      assert.deepEqual(B[method](graph, ...terms), expected);
+      assert.deepEqual(B[method](graph, ...terms.map(v => v ?? undefined)), expected);
     }
   });
 }
 
-for (const method of [...Object.keys(endings), 'buildClear']) {
-  test(`${method} fixed connected scope, safe deletion, hostile values and fresh params`, () => {
-    const base = CypherBuilder[method]('g', 'urn:s', 'urn:p', 'urn:o');
-    assert.ok(base.query.startsWith(match));
-    assert.equal((base.query.match(/graph: \$graph/g) ?? []).length, 2);
-    assert.doesNotMatch(base.query, /DETACH|DELETE\s+[so]|\*|MATCH[^\n]*,\s*\(/);
-    if (method === 'buildRemove' || method === 'buildClear') assert.ok(base.query.endsWith('\nDELETE r'));
-    for (const payload of ['x`}) MATCH (n) DETACH DELETE n //', 'x\nRETURN 42; //', 'x\\"\u0000雪', 'x'.repeat(100000)]) {
-      for (let i = 0; i < (method === 'buildClear' ? 1 : 4); i++) {
-        const args = ['g', 'urn:s', 'urn:p', 'urn:o'];
-        args[i] = payload;
-        Object.freeze(args);
-        if (i > 0) { assert.throws(() => CypherBuilder[method](...args), TypeError); continue; }
-        const result = CypherBuilder[method](...args);
-        assert.equal(result.query, base.query);
-        assert.equal(result.query.includes(payload), false);
-        assert.equal(result.params[['graph', 'subject', 'predicate', 'object'][i]], payload);
-        const again = CypherBuilder[method](...args);
-        assert.deepEqual(result, again);
-        assert.notEqual(result, again);
-        assert.notEqual(result.params, again.params);
-        result.params.graph = 'changed';
-        assert.equal(again.params.graph, args[0]);
-        assert.equal(args[i], payload);
-      }
+test('typed identity: independent equals, lexical distinctions, graph collisions and cross-partition blanks', () => {
+  assert.equal(STORAGE_VERSION, '1');
+  assert.equal(STORAGE_PROFILE, 'rdfjs-structural-v1');
+  assert.equal(CONSTRAINTS.length, 3);
+  assert.notEqual(graphKey(), graphKey(nn('urn:default')));
+  assert.throws(() => graphKey(nn('')), /absolute IRI/);
+  assert.deepEqual(encodeTerm(lit('a')), encodeTerm(lit('a')));
+  const variants = [nn('urn:o'), bn('urn:o'), lit('urn:o'), lit('01', 'urn:int'), lit('1', 'urn:int'), lit('01'), lit('a', RDF_LANG_STRING, 'en'), lit('a', RDF_LANG_STRING, 'fr')];
+  assert.equal(new Set(variants.map(t => encodeTerm(t).key)).size, variants.length);
+  for (const graph of graphs) {
+    const record = { ...encodeTerm(bn('shared')), graph: graphKey(graph) };
+    assert.equal(decodeTerm(record, graph).value, 'shared');
+  }
+});
+
+test('all data stays in parameters, even hostile blank/literal text and huge values', () => {
+  for (const payload of ['x`}) MATCH (n) DETACH DELETE n //', 'x\nRETURN 42; //', 'x\\"\u0000雪', 'x'.repeat(100000)]) {
+    const args = [nn('urn:g'), bn(payload), nn('urn:p'), lit(payload)];
+    for (const method of ['buildAdd', ...Object.keys(endings)]) {
+      const first = B[method](...args), second = B[method](...args);
+      assert.equal(first.query.includes(payload), false);
+      assert.deepEqual(first, second);
+      assert.notEqual(first.params, second.params);
+      assert.equal(method === 'buildAdd' ? first.params.object.value : first.params.object, method === 'buildAdd' ? payload : termKey(lit(payload)));
+      assert.equal(method === 'buildAdd' ? first.params.subject.value : first.params.subject, method === 'buildAdd' ? payload : termKey(bn(payload)));
+      first.params.graph = 'changed';
+      assert.equal(second.params.graph, graphKey(args[0]));
     }
-  });
-}
-
-test('buildClear only deletes scoped relationships, retaining orphan nodes', () => {
-  for (const graph of [undefined, null, '', 'named']) {
-    assert.deepEqual(CypherBuilder.buildClear(graph), { query: `${match}\nDELETE r`, params: { graph: graph ?? '' } });
-    assert.deepEqual(CypherBuilder.buildClear(graph), CypherBuilder.buildRemove(graph));
-  }
-  for (const graph of [0, false, [], {}, Symbol('secret'), new String('secret')]) {
-    assert.throws(() => CypherBuilder.buildClear(graph), {
-      name: 'TypeError', message: 'buildClear: graphName (argument 1) must be a string',
-    });
-  }
-});
-
-const positions = ['graphName', 'subject', 'predicate', 'object'];
-for (let position = 0; position < 4; position++) {
-  test(`buildAdd rejects invalid ${positions[position]} without coercion or value disclosure`, () => {
-    const invalid = [0, false, NaN, 1n, Symbol('secret'), [], {}, new String('secret'),
-      { toString() { throw new Error('must not coerce'); } }];
-    if (position > 0) invalid.push(null, undefined);
-    for (const value of invalid) {
-      const args = ['g', 'urn:s', 'urn:p', 'urn:o'];
-      args[position] = value;
-      assert.throws(() => CypherBuilder.buildAdd(...args), {
-        name: 'TypeError',
-        message: `buildAdd: ${positions[position]} (argument ${position + 1}) must be a string`,
-      });
+    for (const position of [0, 2]) {
+      const bad = [...args]; bad[position] = nn(payload);
+      assert.throws(() => B.buildAdd(...bad), /absolute IRI/);
     }
-  });
-}
-
-test('missing add terms report the first missing position', () => {
-  for (let length = 1; length < 4; length++) {
-    assert.throws(() => CypherBuilder.buildAdd(...['g', 'urn:s', 'urn:p', 'urn:o'].slice(0, length)), {
-      name: 'TypeError', message: `buildAdd: ${positions[length]} (argument ${length + 1}) must be a string`,
-    });
-  }
-  assert.throws(() => CypherBuilder.buildAdd(), /buildAdd: subject \(argument 2\)/);
-});
-
-test('literal subjects and literal or blank predicates are rejected with redacted errors', () => {
-  for (const value of ['"secret"', "'secret'"]) {
-    assert.throws(() => CypherBuilder.buildAdd('', value, 'urn:p', 'urn:o'), {
-      name: 'TypeError', message: 'buildAdd: subject (argument 2) must be an IRI or blank node',
-    });
-  }
-  for (const value of ['"secret"', "'secret'", '_:secret']) {
-    assert.throws(() => CypherBuilder.buildAdd('', 'urn:s', value, 'urn:o'), {
-      name: 'TypeError', message: 'buildAdd: predicate (argument 3) must be an IRI',
-    });
   }
 });
 
-test('each call returns fresh result and params and does not mutate arguments', () => {
-  const args = Object.freeze(['g', '_:s', 'urn:p', '"o"']);
-  const first = CypherBuilder.buildAdd(...args);
-  const second = CypherBuilder.buildAdd(...args);
-  assert.deepEqual(first, second);
-  assert.notEqual(first, second);
-  assert.notEqual(first.params, second.params);
-  first.params.graph = 'changed';
-  assert.equal(second.params.graph, 'g');
-  assert.deepEqual(args, ['g', '_:s', 'urn:p', '"o"']);
+test('mutations have fixed connected graph scope and one reusable serialization lock', () => {
+  for (const graph of graphs) {
+    assert.deepEqual(B.buildClear(graph), { query: `${match}\nDELETE r`, params: { graph: graphKey(graph) } });
+    assert.deepEqual(B.buildClear(graph), B.buildRemove(graph));
+    for (const method of ['buildClear', 'buildRemove', 'buildFind', 'buildHas', 'buildCount']) {
+      const { query } = B[method](graph);
+      assert.equal((query.match(/graph: \$graph/g) ?? []).length, 2);
+      assert.doesNotMatch(query, /DETACH|DELETE\s+[so]|\*|MATCH[^\n]*,\s*\(/);
+    }
+    assert.deepEqual(B.buildLock(graph), { query: 'MERGE (g:JssgdbcRdfGraph {key: $graph})\nSET g._jssgdbcLock = true\nREMOVE g._jssgdbcLock', params: { graph: graphKey(graph) } });
+  }
 });
 
-test('large values do not grow the statement text', () => {
-  const object = '"' + 'x'.repeat(100000) + '"';
-  assert.deepEqual(CypherBuilder.buildAdd('g', 'urn:s', 'urn:p', object), {
-    query, params: { graph: 'g', subjectKind: 'iri', subject: 'urn:s', predicate: 'urn:p', objectKind: 'literal', object },
-  });
+test('invalid types, strings and RDF positions reject without coercion or payload echo', () => {
+  for (const method of ['buildAdd', ...Object.keys(endings)]) for (let i = 0; i < 4; i++) {
+    for (const value of [0, false, NaN, 1n, Symbol('secret'), [], {}, 'secret', new String('secret'), { toString() { throw Error('coercion'); } }]) {
+      const args = [defaultGraph(), nn('urn:s'), nn('urn:p'), nn('urn:o')]; args[i] = value;
+      assert.throws(() => B[method](...args), error => { assert.doesNotMatch(error.message, /secret|coercion/); return true; });
+    }
+  }
+  for (const value of [null, '', bn('g'), lit('g')]) assert.throws(() => B.buildClear(value));
+  for (const value of [lit('secret'), defaultGraph()]) assert.throws(() => B.buildAdd(defaultGraph(), value, nn('urn:p'), nn('urn:o')));
+  for (const value of [lit('secret'), bn('secret')]) assert.throws(() => B.buildAdd(defaultGraph(), nn('urn:s'), value, nn('urn:o')));
+  for (let length = 0; length < 4; length++) assert.throws(() => B.buildAdd(...[defaultGraph(), nn('urn:s'), nn('urn:p'), nn('urn:o')].slice(0, length)));
+});
+
+test('codec rejects corrupt persisted identity/partition/positions without echo', () => {
+  const good = { ...encodeTerm(lit('secret')), graph: graphKey() };
+  for (const record of [null, {}, { ...good, key: 'secret' }, { ...good, graph: graphKey(nn('urn:foreign')) },
+    { ...good, value: 1 }, { ...good, language: 'FR' }, { ...good, datatype: '' },
+    { ...encodeTerm(nn('urn:s')), graph: graphKey(), language: 'en' }]) {
+    assert.throws(() => decodeTerm(record), { message: 'Neo4j RDF storage: invalid term record' });
+  }
+  assert.throws(() => decodeTerm(good, defaultGraph(), 'subject'));
 });
