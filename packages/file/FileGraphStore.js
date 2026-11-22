@@ -57,5 +57,13 @@ export class FileGraphStore {
     });
   }
 
+  save(quads, mode) {
+    return this.mutate(previous => {
+      const merged = new Map((mode === 'replace' ? [] : previous).map(q => [quadKey(q), q]));
+      for (const quad of quads) merged.set(quadKey(quad), quad);
+      return [...merged.values()];
+    });
+  }
+
   drain() { return this._tail; }
 }
