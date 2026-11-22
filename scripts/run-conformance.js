@@ -7,6 +7,8 @@ export function runConformance({ spawn = spawnSync, report = console.error } = {
   const phases = [
     ['memory', 'npm', ['test', '--workspace=packages/memory'], 120000],
     ['file', 'npm', ['test', '--workspace=packages/file'], 120000],
+    ['memory Dataset', process.execPath, ['test/verify-dataset-memory.js'], 120000],
+    ['file Dataset', process.execPath, ['test/verify-dataset-file.js'], 120000],
     ['Neo4j', process.execPath, ['packages/neo4j/test/run-integration.js'], 780000],
     ['Fuseki', process.execPath, ['packages/sparql/test/run-integration.js'], 900000],
   ];
@@ -15,7 +17,7 @@ export function runConformance({ spawn = spawnSync, report = console.error } = {
     let ok = false;
     try {
       const result = spawn(command, args, { cwd, stdio: 'inherit', timeout, killSignal: 'SIGKILL' });
-      ok = !!result && !result.error && result.status === 0;
+      ok = !!result && !result.error && !result.signal && result.status === 0;
     } catch { /* Never report arbitrary subprocess error bodies. */ }
     report(`Conformance ${name}: ${ok ? 'passed' : 'failed'} (${Date.now() - start}ms)`);
     if (!ok) failed = true;

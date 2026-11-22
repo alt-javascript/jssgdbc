@@ -21,7 +21,28 @@ export async function datasetCompliance(client, rdf, external, factory) {
     assert.notEqual(client.getGraph(), client.getGraph(g));
     const capabilities = client.getCapabilities();
     assert.equal(capabilities.version, 1);
+    assert(Object.isFrozen(capabilities));
     assert(Object.isFrozen(capabilities.features));
+    assert.deepEqual(Object.keys(capabilities.features).sort(), [
+      'rdf11', 'namedGraphs', 'defaultGraph', 'blankNodeGraphs', 'rdfStar',
+      'variables', 'persistence', 'transactions', 'crossGraphAtomicity', 'streaming', 'duplicateQuads'
+    ].sort());
+    for (const entry of Object.values(capabilities.features)) {
+      assert(Object.isFrozen(entry));
+      assert(['supported', 'configured', 'unavailable', 'unknown'].includes(entry.status));
+      if (entry.detail !== undefined) assert.equal(typeof entry.detail, 'string');
+      assert.throws(() => { entry.status = 'configured'; }, TypeError);
+    }
+    assert.throws(() => { capabilities.version = 2; }, TypeError);
+    assert.throws(() => { capabilities.features.rdf11 = {}; }, TypeError);
+    // These portable declarations are exercised by the typed round trip, graph
+    // selection and merge/set semantics below; backend guarantees stay separate.
+    for (const key of ['rdf11', 'namedGraphs', 'defaultGraph']) {
+      assert.equal(capabilities.features[key].status, 'supported');
+    }
+    for (const key of ['blankNodeGraphs', 'rdfStar', 'variables', 'streaming', 'duplicateQuads']) {
+      assert.equal(capabilities.features[key].status, 'unavailable');
+    }
     const outcomes = await client.saveDataset(input, { graphs: [d, g, rdf.namedNode(g.value)] });
     assert.deepEqual(outcomes.map(o => o.status), ['committed', 'committed']);
     const loaded = await client.loadDataset({ graphs: [d, g], factory });
