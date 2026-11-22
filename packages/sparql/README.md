@@ -120,6 +120,60 @@ export async function writeExample(endpoint, {
 
 Closing handles is not rollback. If a step fails, previous writes can remain.
 
+## Explicit Dataset load/edit/save
+
+Use an independent RDF/JS factory and Dataset (the example uses `@rdfjs/data-model`
+and `@rdfjs/dataset`) alongside the local Dataset factory. This opt-in example
+**replaces the entire selected named graph**: use only a disposable endpoint.
+Local edits never write remotely; save is explicit. Selections are required,
+deduplicated, and preserve default versus named graph meaning.
+
+<!-- example:dataset -->
+```javascript
+import { DriverManager } from '@alt-javascript/jssgdbc-sparql';
+import { factory } from '@alt-javascript/jssgdbc-dataset';
+import rdf from '@rdfjs/data-model';
+import external from '@rdfjs/dataset';
+
+export async function datasetExample(endpoint, { allowWrites = false } = {}) {
+  if (!allowWrites) throw new Error('Writes require explicit opt-in');
+  const client = await DriverManager.getClient(`jssgdbc:sparql:${endpoint}`);
+  try {
+    const graph = rdf.namedNode('https://example.org/graphs/dataset-demo');
+    const graphs = [graph];
+    const loaded = await client.loadDataset({ graphs, factory });
+    const edited = external.dataset([...loaded]);
+    const quad = rdf.quad(rdf.namedNode('urn:demo:item'),
+      rdf.namedNode('urn:demo:label'), rdf.literal('Edited locally'), graph);
+    edited.add(quad); // Local only, not write-through.
+    await client.saveDataset(edited, { graphs, mode: 'merge' });
+    edited.delete(quad); // Merge cannot remove remote data.
+    await client.saveDataset(edited, { graphs, mode: 'replace' });
+    return { loadedSize: loaded.size, editedSize: edited.size };
+  } finally { await client.close(); }
+}
+```
+
+Loads use one SELECT response and saves one update request across selected
+graphs, preserving shared blanks within that scope. An empty merge is a no-op;
+an empty replacement clears only selected graphs. Replacement combines clears
+and inserts but **does not promise atomicity or rollback**. Re-saving loaded
+blank nodes in merge creates new remote identities; use deliberate replacement
+or application-owned IRIs rather than treating response blank labels as IDs.
+
+`client.getCapabilities()` returns an immutable, versioned description: typed named/default
+graphs are supported; blank graph names, RDF-star, Variables, streaming and
+client transactions are unavailable. Persistence and cross-graph guarantees
+are endpoint-dependent. A configured default graph may be an endpoint-defined
+union/view rather than a separate writable graph; confirm server policy before
+using default-graph replacement. The owned Fuseki tests prove only their pinned
+configuration, not every endpoint.
+
+A failed save throws `DatasetSaveError` with a sanitized cause and per-selected-
+graph outcomes: `committed`, `not-attempted`, or `unknown`. After `unknown`, inspect
+remote state and reconcile against the intended dataset before deciding on a
+new write. Do not automatically replay a possibly committed update.
+
 ## Terms, graphs and handles
 
 - Use structural RDF/JS terms from any independent factory, not strings or
@@ -167,6 +221,10 @@ There is no pagination, response-size limit, streaming, automatic retries or
 concurrency limiter. Memory grows with response size and buffered triples;
 concurrent requests multiply that cost. Timeouts bound I/O duration, not memory.
 Use selective patterns, application concurrency limits and endpoint quotas.
+Dataset loads/saves buffer O(quads + selected graphs); queued saves retain full
+snapshots. At 10x volume, heap or endpoint/proxy request limits can fail first.
+GET query URLs also have server/proxy length limits. Bound selection/input sizes
+and await saves to avoid accumulating snapshots; there is no automatic chunking.
 A failed update can have an **unknown commit outcome**; do not blindly retry it.
 
 The README examples and shared compliance tests run offline against a narrow

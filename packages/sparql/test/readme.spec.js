@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { DriverManager, SparqlDriver } from '@alt-javascript/jssgdbc-sparql';
 import { startMockSparqlEndpoint } from './helpers/mock-sparql-endpoint.js';
 
-// Execute only the two explicitly marked examples. Resolve the public package
+// Execute only the explicitly marked examples. Resolve the public package
 // import for a data-URL module; leave the executable example logic unchanged.
 async function example(id) {
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
@@ -13,8 +13,8 @@ async function example(id) {
   assert.equal(matches.length, 1, `README must contain exactly one ${id} example`);
   const specifier = "'@alt-javascript/jssgdbc-sparql'";
   assert.ok(matches[0][1].includes(specifier), 'example must import the public package');
-  const source = matches[0][1].replace(specifier,
-    JSON.stringify(import.meta.resolve('@alt-javascript/jssgdbc-sparql')));
+  const source = matches[0][1].replace(/from '([^']+)'/g,
+    (_, name) => `from ${JSON.stringify(import.meta.resolve(name))}`);
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
@@ -127,9 +127,23 @@ describe('Executable SPARQL README examples', () => {
     assertClosed(0);
   });
 
+  it('executes independent Dataset edits with explicit merge and replacement', async () => {
+    const { datasetExample } = await example('dataset');
+    await assert.rejects(datasetExample(fixture.endpoint), /explicit opt-in/);
+    assert.equal(fixture.requests.length, 0);
+    assert.deepEqual(await datasetExample(fixture.endpoint, { allowWrites: true }),
+      { loadedSize: 0, editedSize: 0 });
+    assertClosed(1);
+    assert.deepEqual(fixture.requests.map(request => request.method), ['GET', 'POST', 'POST']);
+    const client = await DriverManager.getClient(`jssgdbc:sparql:${fixture.endpoint}`);
+    assert.equal(await client.getGraph(n('https://example.org/graphs/dataset-demo')).count(), 0);
+    await client.close();
+  });
+
   for (const [id, name, options, expected] of [
     ['read-only', 'readExample', undefined, 2],
-    ['writable', 'writeExample', { allowWrites: true }, 3]
+    ['writable', 'writeExample', { allowWrites: true }, 3],
+    ['dataset', 'datasetExample', { allowWrites: true }, 1]
   ]) {
     it(`propagates connection failure and closes ${id} handles`, async () => {
       const module = await example(id);
