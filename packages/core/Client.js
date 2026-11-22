@@ -1,6 +1,6 @@
-import { UnsupportedOperationError } from './errors.js';
+import { UnsupportedOperationError, DatasetSaveError } from './errors.js';
 import { DriverManager } from './DriverManager.js';
-import { snapshotTerm, termKey, defaultGraph } from './RdfTerm.js';
+import { snapshotTerm, termKey, defaultGraph, createQuad } from './RdfTerm.js';
 import { createCapabilities } from './Capabilities.js';
 const UNKNOWN_CAPABILITIES = createCapabilities();
 
@@ -13,6 +13,7 @@ export class Client {
     this._closed = false;
     this._closePromise = null;
     this._ownedGraphs = new Set();
+    this._datasetTail = Promise.resolve();
   }
 
   getCapabilities() { return UNKNOWN_CAPABILITIES; }
@@ -29,6 +30,80 @@ export class Client {
     this._ownedGraphs.add(graph);
     return graph;
   }
+
+  // Admission is synchronous up to the first await: caller-owned values never
+  // cross the async boundary. Dataset operations serialize, not graph operations.
+  async loadDataset({ graphs, factory } = {}) {
+    this._checkClosed();
+    const selected = this._datasetGraphs(graphs);
+    if (typeof factory?.dataset !== 'function') throw new TypeError('Expected DatasetFactory');
+    const make = factory.dataset.bind(factory);
+    return this._enqueueDataset(async () => {
+      const quads = [];
+      for (const graph of selected) {
+        for (const q of await this._loadDatasetGraph(graph)) {
+          const copy = createQuad(q.subject, q.predicate, q.object, snapshotTerm(q.graph, 'graph'));
+          if (!copy.graph.equals(graph)) throw new TypeError('Adapter returned an unselected graph');
+          quads.push(copy);
+        }
+      }
+      return make(quads);
+    });
+  }
+
+  async saveDataset(dataset, { graphs, mode = 'merge' } = {}) {
+    this._checkClosed();
+    const selected = this._datasetGraphs(graphs);
+    if (!['merge', 'replace'].includes(mode)) throw new TypeError('Expected merge or replace mode');
+    if (typeof dataset?.[Symbol.iterator] !== 'function') throw new TypeError('Expected iterable Dataset');
+    const keys = new Set(selected.map(termKey));
+    const snapshot = [];
+    for (const q of dataset) {
+      if (q?.termType !== 'Quad' || q.value !== '') throw new TypeError('Expected RDF/JS Quad');
+      const copy = createQuad(q.subject, q.predicate, q.object, snapshotTerm(q.graph, 'graph'));
+      if (!keys.has(termKey(copy.graph))) throw new TypeError('Dataset contains an unselected graph');
+      snapshot.push(copy);
+    }
+    return this._enqueueDataset(async () => {
+      const outcomes = selected.map(graph => ({ graph, status: 'not-attempted' }));
+      try {
+        const scoped = this._scopeDataset(snapshot);
+        const groups = new Map(selected.map(graph => [termKey(graph), []]));
+        for (const q of scoped) groups.get(termKey(q.graph)).push(q);
+        for (const outcome of outcomes) {
+          outcome.status = 'unknown';
+          await this._saveDatasetGraph(outcome.graph, groups.get(termKey(outcome.graph)), mode);
+          outcome.status = 'committed';
+        }
+      } catch (cause) {
+        throw new DatasetSaveError('Dataset save failed', cause, outcomes);
+      }
+      return Object.freeze(outcomes.map(outcome => Object.freeze(outcome)));
+    });
+  }
+
+  _datasetGraphs(graphs) {
+    if (!Array.isArray(graphs) || !graphs.length) throw new TypeError('Expected nonempty graphs array');
+    const unique = new Map();
+    for (const graph of graphs) {
+      const copy = snapshotTerm(graph, 'graph');
+      unique.set(termKey(copy), copy);
+    }
+    return [...unique.values()];
+  }
+
+  _enqueueDataset(operation) {
+    const pending = this._datasetTail.then(operation);
+    // A failure must not poison subsequent admissions or become unhandled.
+    this._datasetTail = pending.then(() => {}, () => {});
+    return pending;
+  }
+
+  // Adapter hooks operate on admitted immutable snapshots, even during close.
+  // Resolve a save hook only after that graph is committed; rejection is unknown.
+  _loadDatasetGraph(graph) { throw new UnsupportedOperationError('loadDataset not implemented'); }
+  _scopeDataset(quads) { throw new UnsupportedOperationError('saveDataset not implemented'); }
+  _saveDatasetGraph(graph, quads, mode) { throw new UnsupportedOperationError('saveDataset not implemented'); }
 
   _getGraph(name) {
     throw new UnsupportedOperationError('_getGraph not implemented');
@@ -56,6 +131,7 @@ export class Client {
     const owned = [...this._ownedGraphs];
     // Defer invocation so the cached promise exists even for reentrant hooks.
     this._closePromise = Promise.resolve().then(async () => {
+      await this._datasetTail;
       const outcomes = await Promise.allSettled(
         owned.map(graph => Promise.resolve().then(() => graph.close()))
       );
