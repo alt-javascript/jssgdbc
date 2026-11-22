@@ -2,6 +2,8 @@ import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { snapshotTerm, termKey } from '../core/RdfTerm.js';
+import { NTriplesParser } from './NTriplesParser.js';
 
 // Internal boundary. Directories must be owned by a trusted caller: portable
 // lstat/open checks cannot prevent concurrent hostile ancestor replacement.
@@ -14,12 +16,11 @@ export class FileStorage {
   }
 
   key(name) {
-    if (typeof name !== 'string') throw new TypeError('File graph name must be a string');
-    return `v1-${createHash('sha256').update(JSON.stringify(name)).digest('hex')}`;
+    return `v2-${createHash('sha256').update(termKey(snapshotTerm(name, 'graph'))).digest('hex')}`;
   }
 
   _error(operation, key, cause) {
-    const error = new Error(`File storage ${operation} failed [${key}]${cause?.storageOperation ? `: ${cause.storageOperation}` : ''}`, { cause });
+    const error = new Error(`File storage ${operation} failed [${key}]: ${cause?.message ?? 'unknown error'}`, { cause });
     error.storageOperation = operation;
     if (cause?.code) error.code = cause.code;
     return error;
@@ -72,7 +73,7 @@ export class FileStorage {
     const handle = await this._fs.open(target, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
     return this._using(handle, async file => {
       if (!(await file.stat()).isFile()) throw new Error('Unsafe opened file type');
-      return file.readFile('utf8');
+      return new TextDecoder('utf-8', { fatal: true }).decode(await file.readFile());
     });
   }
 
@@ -85,8 +86,35 @@ export class FileStorage {
     });
   }
 
+  async _identity(directory, key, expected) {
+    try {
+      const metadata = JSON.parse(await this._read(path.join(directory, 'identity.json')));
+      if (!metadata || metadata.version !== 2 || Object.keys(metadata).length !== 2 ||
+          !metadata.graph || Object.keys(metadata.graph).length !== 2) throw new Error('Incompatible storage identity/version');
+      const graph = snapshotTerm(metadata.graph, 'graph');
+      if (this.key(graph) !== key || (expected && termKey(graph) !== termKey(expected))) throw new Error('Identity mismatch');
+    } catch (cause) { throw this._error('identity verification', key, cause); }
+  }
+
+  async _compatible() {
+    // Inspect reserved namespaces before creating any graph metadata. Unrelated
+    // non-RDF files are never removed or adopted. Legacy data is never migrated.
+    for (const name of await this._fs.readdir(this.root)) {
+      if (/^v[^-]*-/i.test(name)) {
+        if (!/^v2-[0-9a-f]{64}$/.test(name)) throw new Error(`Incompatible storage version: ${name}`);
+        const directory = path.join(this.root, name);
+        await this._directory(directory);
+        await this._identity(directory, name);
+      } else if (/\.(?:nt|nq|ttl|trig|rdf|jsonld)$/i.test(name) || name === 'identity.json') {
+        throw new Error(`Incompatible unversioned RDF storage: ${name}`);
+      }
+    }
+  }
+
   async _entry(name, key) {
+    name = snapshotTerm(name, 'graph');
     await this._root();
+    await this._compatible();
     const directory = path.join(this.root, key);
     let created = false;
     try { await this._fs.mkdir(directory, { mode: 0o700 }); created = true; }
@@ -95,31 +123,31 @@ export class FileStorage {
     const identity = path.join(directory, 'identity.json');
     // Only the creator of a new directory may reserve its identity. An existing
     // entry without metadata is ambiguous (including interrupted creation).
-    if (created) await this._exclusive(identity, JSON.stringify({ version: 1, name }));
-    let metadata;
-    try {
-      const text = await this._read(identity);
-      try { metadata = JSON.parse(text); } catch { throw new Error('Malformed identity metadata'); }
-      if (!metadata || metadata.version !== 1 || metadata.name !== name ||
-          Object.keys(metadata).length !== 2) throw new Error('Identity mismatch');
-    } catch (error) { throw this._error('identity verification', key, error); }
+    if (created) await this._exclusive(identity, JSON.stringify({ version: 2, graph: { termType: name.termType, value: name.value } }));
+    await this._identity(directory, key, name);
     const payload = path.join(directory, 'graph.nt');
     await this._regular(payload, true);
     return { directory, payload };
   }
 
   async read(name) {
+    name = snapshotTerm(name, 'graph');
     const key = this.key(name);
     try {
       const { payload } = await this._entry(name, key);
-      return (await this._read(payload, true)) ?? '';
+      const text = (await this._read(payload, true)) ?? '';
+      NTriplesParser.parse(text, name);
+      return text;
     } catch (error) { throw this._error('read', key, error); }
   }
 
   async write(name, text) {
+    name = snapshotTerm(name, 'graph');
     const key = this.key(name);
     let temporary, owned = false;
     try {
+      // Validate the complete candidate before even reserving metadata.
+      NTriplesParser.parse(text, name);
       const { directory, payload } = await this._entry(name, key);
       temporary = path.join(directory, `.tmp-${randomUUID()}`);
       await this._exclusive(temporary, text, () => { owned = true; });
