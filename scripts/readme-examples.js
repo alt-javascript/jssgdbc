@@ -9,7 +9,8 @@ export const examples = [
   ['README.md', 'memory-quickstart'],
   ['packages/core/README.md', 'core-quickstart'],
   ['packages/memory/README.md', 'memory-quickstart'],
-  ['packages/file/README.md', 'file-quickstart']
+  ['packages/file/README.md', 'file-quickstart'],
+  ['packages/dataset/README.md', 'dataset-quickstart']
 ];
 
 export function extractExample(source, path, marker) {

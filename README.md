@@ -6,9 +6,9 @@ not indicate a supported release. Use the local workspace while the API evolves.
 
 JSSGDBC provides an async `DriverManager → Client → Graph → Cursor` API for
 subject/predicate/object storage. It currently implements triple CRUD and wildcard
-matching across four storage adapters. The tested portable string-term and lifecycle contracts are described in
-[STRING-TERMS.md](packages/core/test/STRING-TERMS.md) and
-[CONFORMANCE.md](packages/core/test/CONFORMANCE.md). Backend operational
+matching across four storage adapters. The current typed-term and explicit Dataset contracts are described in
+[TYPED-TERMS.md](packages/core/test/TYPED-TERMS.md) and
+[DATASET-PERSISTENCE.md](packages/core/test/DATASET-PERSISTENCE.md). Backend operational
 semantics, blank-node identity and durability are not interchangeable.
 
 ## Implemented packages
@@ -20,6 +20,7 @@ semantics, blank-node identity and durability are not interchangeable.
 | [file](packages/file/README.md) | Per-graph N-Triples files, lazy load and eager rewrite | Local filesystem tests; single-writer use |
 | [sparql](packages/sparql/README.md) | Triple patterns translated to SPARQL over HTTP | Loopback fixture and separate live Fuseki conformance |
 | [neo4j](packages/neo4j/README.md) | SPO mapping into a dedicated Neo4j schema | Local unit tests; separate Docker integration command |
+| [dataset](packages/dataset/README.md) | Optional full synchronous RDF/JS Dataset and factory | Local tests and executable explicit persistence example |
 
 The [trajectory scan](docs/jssgdbc-trajectory.md) contains historical findings
 and longer-term proposals; current contracts and acceptance commands are linked above.
@@ -34,7 +35,7 @@ npm test
 ```
 
 `npm test` runs packaging safeguards, executable local README examples, core,
-memory, file and SPARQL Mocha suites plus Neo4j unit tests.
+memory, file and SPARQL Mocha suites plus Neo4j and optional Dataset unit tests.
 Run `npm run test:docs`, `node test/verify-quickstart.js` or
 `node test/verify-file-quickstart.js` for focused documentation checks.
 SPARQL fixtures bind to localhost; restricted sandboxes may need permission for
@@ -51,37 +52,39 @@ npm run test:integration --workspace=packages/sparql
 
 ## Memory example
 
-Run from the repository root with Node.js ESM. The quoted object below represents
-a literal, not an IRI. This marked block is executed unchanged by `test:docs`.
+Run from the repository root with Node.js 22+ ESM. Independent RDF/JS terms
+distinguish literals from IRIs; strings are not accepted as Graph terms.
+This small buffered example is executed unchanged by `test:docs`.
 
 <!-- example:memory-quickstart -->
 ```javascript
 import assert from 'node:assert/strict';
 import '@alt-javascript/jssgdbc-memory';
 import { DriverManager } from '@alt-javascript/jssgdbc-core';
+import rdf from '@rdfjs/data-model'; // Independent RDF/JS factory
+const s = rdf.namedNode('urn:alice'), p = rdf.namedNode('urn:name');
+const name = rdf.literal('Alice');
 
 const client = await DriverManager.getClient('jssgdbc:memory:');
 const graph = client.getGraph();
 let cursor;
 try {
-  await graph.add('urn:alice', 'urn:name', '"Alice"');
-  await graph.add('<urn:alice>', 'urn:name',
-    '"Alice"^^<http://www.w3.org/2001/XMLSchema#string>');
+  await graph.add(s, p, name);
+  await graph.add(s, p, rdf.literal('Alice',
+    rdf.namedNode('http://www.w3.org/2001/XMLSchema#string')));
   assert.equal(await graph.count(), 1); // Plain and xsd:string are equivalent.
-  assert.equal(await graph.has('urn:alice', 'urn:name', 'urn:Alice'), false);
-  cursor = await graph.find('urn:alice', null, null);
+  assert.equal(await graph.has(s, p, rdf.namedNode('urn:Alice')), false);
+  cursor = await graph.find(s, null, null);
   await graph.close();
   await graph.close(); // Idempotent; does not delete data.
   await assert.rejects(() => graph.count(), /closed/i);
   const fresh = client.getGraph();
   assert.notEqual(fresh, graph);
-  assert.equal(await fresh.has('urn:alice', 'urn:name', '"Alice"'), true);
+  assert.equal(await fresh.has(s, p, name), true);
   await client.close(); // Owns fresh too; drains admitted operations.
   assert.throws(() => client.getGraph(), /closed/i);
   assert.equal(await cursor.next(), true); // Detached buffered result survives.
-  assert.deepEqual(cursor.getTriple(), {
-    subject: 'urn:alice', predicate: 'urn:name', object: '"Alice"'
-  });
+  assert(cursor.getTriple().equals(rdf.quad(s, p, name)));
   assert.equal(await cursor.next(), false);
 } finally {
   try { await cursor?.close(); }
@@ -111,7 +114,7 @@ alone does not establish a database connection.
 - Neo4j stores triples in a JSSGDBC-specific schema; it does not expose arbitrary
   existing property graphs or Graphiti graphs through the triple API.
 - File graph identities use validated keyed directories, not graph names as paths.
-  See the [file boundaries](packages/file/README.md#known-limitations): trusted
+  See the [file boundaries](packages/file/README.md#limits-and-capabilities): trusted
   directory ownership, single-writer coordination and no fsync guarantee.
 - Await idempotent graph/client closure to drain admitted operations, not cancel
   them. Closed clients are terminal; open clients can reacquire fresh graph handles.
@@ -129,7 +132,7 @@ remains a separate consumer of this library.
 - [Prompt for the next GSD session](handoff/jssgdbc-next-session-prompt.md)
 
 Use local development and verification. Publication, release tagging and deployment
-are outside the current scope. Root and all five workspace versions are `0.0.0` and private. Each workspace
+are outside the current scope. Root and all six workspace versions are `0.0.0` and private. Each workspace
 also rejects its prepublish lifecycle offline. These accidental-publication
 safeguards are not a security boundary: scripts can be disabled and manifests
 can be changed. No registry release is supported.

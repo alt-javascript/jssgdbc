@@ -4,6 +4,16 @@ import { access, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { examples, extractExample, executeSource, runExample } from './readme-examples.js';
 
+test('local documentation registry includes the optional Dataset workflow exactly once', () => {
+  assert.deepEqual(examples, [
+    ['README.md', 'memory-quickstart'],
+    ['packages/core/README.md', 'core-quickstart'],
+    ['packages/memory/README.md', 'memory-quickstart'],
+    ['packages/file/README.md', 'file-quickstart'],
+    ['packages/dataset/README.md', 'dataset-quickstart']
+  ]);
+});
+
 for (const [path, marker] of examples) {
   test(`${path} [${marker}] executes unchanged`, () => runExample(path, marker));
 }
@@ -48,6 +58,31 @@ for (const [name, source, expected, timeout] of [
     await assert.rejects(access(directory), { code: 'ENOENT' });
   });
 }
+
+test('execution forwards exact fenced source and cleans storage on success', async () => {
+  const source = extractExample(good, 'README.md', 'negative');
+  let directory;
+  await executeSource(source, label, {
+    spawn(command, args, options) {
+      assert.equal(command, process.execPath);
+      assert.deepEqual(args, ['--input-type=module', '--eval', source]);
+      directory = options.env.JSSGDBC_EXAMPLE_DIR;
+      return { status: 0, signal: null, stdout: '', stderr: '' };
+    }
+  });
+  await assert.rejects(access(directory), { code: 'ENOENT' });
+});
+
+test('signal termination fails even with zero exit status and cleans storage', async () => {
+  let directory;
+  await assert.rejects(executeSource('', label, {
+    spawn(_command, _args, options) {
+      directory = options.env.JSSGDBC_EXAMPLE_DIR;
+      return { status: 0, signal: 'SIGTERM', stdout: '', stderr: 'terminated' };
+    }
+  }), /signal=SIGTERM[\s\S]*terminated/);
+  await assert.rejects(access(directory), { code: 'ENOENT' });
+});
 
 test('spawn failure bubbles with example context and cleans storage', async () => {
   let directory;

@@ -13,7 +13,61 @@ console.log(edited.toCanonical()) // synchronous canonical N-Quads
 
 ## Explicit memory persistence
 
-Run `npm run test:dataset-memory` for an executable independent-factory workflow.
+Run `npm run test:docs` for the marked quickstart below, unchanged, or
+`npm run test:dataset-memory` for the broader independent-factory acceptance fixture.
+Run from the repository root after `npm ci` with Node.js 22+; these independent
+factory dependencies are already available in the workspace. This is a small,
+buffered example, not a streaming workflow.
+
+<!-- example:dataset-quickstart -->
+```javascript
+import assert from 'node:assert/strict';
+import rdf from '@rdfjs/data-model';
+import external from '@rdfjs/dataset';
+import factory from '@alt-javascript/jssgdbc-dataset';
+import '@alt-javascript/jssgdbc-memory';
+import { DriverManager } from '@alt-javascript/jssgdbc-core';
+
+const g = rdf.namedNode('urn:people'), unrelated = rdf.namedNode('urn:keep');
+const s = rdf.namedNode('urn:alice'), p = rdf.namedNode('urn:name');
+const original = rdf.quad(s, p, rdf.literal('Alice'), g);
+const input = external.dataset([original]); // Independent DatasetCore input.
+const client = await DriverManager.getClient('jssgdbc:memory:');
+try {
+  await client.getGraph(unrelated).add(s, p, rdf.literal('untouched'));
+  const outcomes = await client.saveDataset(input, { graphs: [g], mode: 'merge' });
+  assert.deepEqual(outcomes.map(o => o.status), ['committed']);
+  const local = await client.loadDataset({ graphs: [g], factory });
+  assert(local.equals(input));
+
+  // Full synchronous Dataset operations are detached from storage.
+  local.delete(original);
+  local.add(rdf.quad(s, p, rdf.literal('Alicia'), g));
+  const edited = local.map(q => rdf.quad(q.subject, q.predicate,
+    rdf.literal(q.object.value.toUpperCase()), q.graph));
+  assert(edited.every(q => q.object.value === 'ALICIA'));
+  assert.equal(edited.filter(q => q.graph.equals(g)).size, 1);
+  assert.equal(edited.reduce(count => count + 1, 0), 1);
+  assert(await client.getGraph(g).has(s, p, rdf.literal('Alice')));
+
+  await client.saveDataset(edited, { graphs: [g], mode: 'merge' });
+  assert.equal((await client.loadDataset({ graphs: [g], factory })).size, 2);
+  await client.saveDataset(edited, { graphs: [g], mode: 'replace' });
+  assert((await client.loadDataset({ graphs: [g], factory })).equals(edited));
+  assert.equal(input.size, 1); // Input was not edited or relabeled.
+  assert(input.has(original));
+
+  edited.deleteMatches(); // Empty replacement clears only the selected graph.
+  assert.equal(await client.getGraph(g).count(), 1);
+  await client.saveDataset(edited, { graphs: [g], mode: 'replace' });
+  assert.equal((await client.loadDataset({ graphs: [g], factory })).size, 0);
+  assert.equal(await client.getGraph(unrelated).count(), 1);
+  assert(await client.getGraph(unrelated).has(s, p, rdf.literal('untouched')));
+} finally {
+  await client.close();
+}
+assert.throws(() => client.getGraph(), /closed/i);
+```
 `await client.loadDataset({graphs, factory})` constructs this full Dataset;
 local `add`, `delete`, `map` and other edits never write storage.
 Persist explicitly with `await client.saveDataset(local, {graphs, mode: 'replace'})`.
@@ -23,8 +77,8 @@ each save, so blank merges are not idempotent. Use `equals` for round-trip
 isomorphism, not label equality. See the [core persistence contract](../core/test/DATASET-PERSISTENCE.md)
 for preflight validation, per-graph DatasetSaveError outcomes and lack of atomicity.
 Memory's RDF 1.1 profile is narrower than a general Dataset: unsupported graph
-kinds and embedded quads are rejected before writes. Remote adapters remain
-unmigrated and are not certified by this workflow.
+kinds and embedded quads are rejected before writes. This memory-only quickstart
+does not certify remote adapters; use the separate cross-adapter acceptance runners.
 
 Exports: default/named `factory` implements DataFactory and DatasetFactory; named `dataset(quads?)` and `Dataset`. All Dataset-producing methods return this package's full Dataset, not DatasetCore. The independent N3 `DataFactory` and `Store` are exercised as inputs. Local edits have no persistence effects. The executable memory contract above verifies explicit persistence integration.
 
