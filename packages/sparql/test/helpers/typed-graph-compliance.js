@@ -3,7 +3,7 @@ import { namedNode as n, blankNode as b, literal as l, defaultGraph as d } from 
 
 // Remote profile of core typedCompliance: INSERT blank labels are request-local,
 // so repeated blank inserts create distinct nodes and identity patterns must reject.
-// Capability assertions remain conservative until dataset transport integration.
+// Capability assertions distinguish typed support from endpoint-dependent guarantees.
 export function typedGraphComplianceTests(name, clientFactory) {
   describe(`${name}: typed RDF/JS graph contract`, () => {
     let client, graph;
@@ -66,9 +66,9 @@ export function typedGraphComplianceTests(name, clientFactory) {
     });
     it('publishes recursively immutable honest versioned guarantees', () => {
       const c = client.getCapabilities(); assert.equal(c.version,1);
-      assert.equal(c.features.defaultGraph.status,'unknown');
+      assert.equal(c.features.defaultGraph.status,'supported');
       assert.equal(c.features.crossGraphAtomicity.status,'unknown');
-      assert.equal(c.features.streaming.status,'unknown');
+      assert.equal(c.features.streaming.status,'unavailable');
       assert.ok(Object.isFrozen(c)); assert.ok(Object.isFrozen(c.features));
       for (const feature of Object.values(c.features)) assert.ok(Object.isFrozen(feature));
       assert.throws(() => { c.features.rdf11.status = 'unknown'; }, TypeError);

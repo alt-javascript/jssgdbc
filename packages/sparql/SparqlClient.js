@@ -1,5 +1,18 @@
-import { Client } from '@alt-javascript/jssgdbc-core';
-import { SparqlGraph } from './SparqlGraph.js';
+import { Client, createCapabilities, createQuad, defaultGraph, termKey } from '@alt-javascript/jssgdbc-core';
+import { SparqlGraph, bindings, responseDecoder } from './SparqlGraph.js';
+import { SparqlBuilder } from './SparqlBuilder.js';
+
+const CAPABILITIES = createCapabilities({
+  rdf11: { status: 'supported', detail: 'Typed RDF 1.1; blanks are request-local on insert and response-local on load. Blank identity query/delete is unavailable.' },
+  namedGraphs: { status: 'supported' },
+  defaultGraph: { status: 'supported', detail: 'Uses the endpoint configured default graph, which may be a union view.' },
+  blankNodeGraphs: { status: 'unavailable' }, rdfStar: { status: 'unavailable' }, variables: { status: 'unavailable' },
+  persistence: { status: 'unknown', detail: 'Durability depends on endpoint configuration.' },
+  transactions: { status: 'unavailable' },
+  crossGraphAtomicity: { status: 'unknown', detail: 'One HTTP request is not a transaction guarantee.' },
+  streaming: { status: 'unavailable', detail: 'Buffered O(quads + graphs) memory; queued saves retain snapshots. GET URL and update/response size limits depend on endpoint/proxy. Bound input and await saves.' },
+  duplicateQuads: { status: 'unavailable' }
+});
 
 const URL_PREFIX = 'jssgdbc:sparql:';
 
@@ -29,6 +42,34 @@ export class SparqlClient extends Client {
     }
   }
 
+  getCapabilities() { return CAPABILITIES; }
+
+  // Serialization allocates one blank-label map for the entire update. The
+  // endpoint allocates fresh identities per INSERT DATA request.
+  _scopeDataset(quads) { return quads; }
+
+  async _loadSelectedDataset(graphs) {
+    const result = await this._requestOwned('query', SparqlBuilder.buildDatasetSelect(graphs));
+    const rows = bindings(result, 'dataset SELECT');
+    const vars = ['s', 'p', 'o', 'g'];
+    const invalid = () => new Error('SPARQL dataset SELECT: invalid result provenance or bindings');
+    if (result.head.vars.length !== 4 || vars.some(v => !result.head.vars.includes(v))) throw invalid();
+    const selected = new Set(graphs.map(termKey));
+    const decode = responseDecoder('dataset SELECT');
+    return rows.map(row => {
+      if (Object.keys(row).some(v => !vars.includes(v))) throw invalid();
+      const graph = Object.hasOwn(row, 'g') ? decode(row.g, 'graph') : defaultGraph();
+      if (!selected.has(termKey(graph))) throw invalid();
+      return createQuad(decode(row.s, 'subject'), decode(row.p, 'predicate'), decode(row.o, 'object'), graph);
+    });
+  }
+
+  async _saveSelectedDataset(graphs, quads, mode, progress) {
+    const text = SparqlBuilder.buildDatasetUpdate(graphs, quads, mode);
+    if (!text) return; // Empty merge is an acknowledged no-op.
+    await this._requestOwned('update', text, () => progress.dispatched());
+  }
+
   _getGraph(name) {
     return new SparqlGraph(this, name);
   }
@@ -43,6 +84,11 @@ export class SparqlClient extends Client {
 
   async _request(operation, text) {
     if (this.isClosed()) throw new Error(`SPARQL ${operation}: client is closed`);
+    return this._requestOwned(operation, text);
+  }
+
+  // Only admitted operations use this path, including queued Dataset work during close.
+  async _requestOwned(operation, text, dispatched = () => {}) {
     const controller = new AbortController();
     const deadline = performance.now() + this._timeoutMs;
     let timer;
@@ -67,6 +113,7 @@ export class SparqlClient extends Client {
         options.method = 'POST';
         options.body = text;
       }
+      dispatched();
       const response = await fetch(url, options);
       if (!response.ok) {
         category = `HTTP ${response.status}`;

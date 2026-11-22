@@ -7,6 +7,23 @@ export class SparqlBuilder {
     return name.termType === 'DefaultGraph' ? pattern : `GRAPH ${this.escapeIri(name)} {\n    ${pattern}\n  }`;
   }
 
+  static buildDatasetSelect(graphs) {
+    const branches = graphs.map(graph => `{ ${this.wrap(graph, '?s ?p ?o .')}${graph.termType === 'NamedNode' ? ` BIND(${this.escapeIri(graph)} AS ?g)` : ''} }`);
+    return `SELECT ?s ?p ?o ?g WHERE { ${branches.join(' UNION ')} }`;
+  }
+
+  static buildDatasetUpdate(graphs, quads, mode) {
+    const blanks = new Map();
+    const groups = new Map(graphs.map(graph => [termKey(graph), { graph, triples: [] }]));
+    for (const quad of quads) {
+      const triple = ['subject', 'predicate', 'object'].map(position => this.formatTerm(quad[position], position, blanks)).join(' ') + ' .';
+      groups.get(termKey(quad.graph)).triples.push(triple);
+    }
+    const operations = mode === 'replace' ? graphs.map(graph => this.buildClear(graph)) : [];
+    if (quads.length) operations.push(`INSERT DATA {\n${[...groups.values()].filter(group => group.triples.length).map(group => this.wrap(group.graph, group.triples.join('\n'))).join('\n')}\n}`);
+    return operations.join(';\n');
+  }
+
   static buildSelect(graph, s, p, o) {
     return `SELECT ?s ?p ?o WHERE {\n  ${this.wrap(graph, this.buildTriplePattern(graph, s, p, o))}\n}`;
   }
