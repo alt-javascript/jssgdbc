@@ -1,0 +1,23 @@
+{
+  "name": "@alt-javascript/jssgdbc-dataset",
+  "version": "0.0.0",
+  "description": "Buffered synchronous RDF/JS Dataset for jssgdbc",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "sideEffects": false,
+  "exports": { ".": { "import": "./index.js", "default": "./index.js" } },
+  "scripts": {
+    "prepublishOnly": "node ../../scripts/prevent-publish.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@rdfjs/data-model": "2.1.2",
+    "@rdfjs/dataset": "2.0.3",
+    "@rdfjs/normalize": "2.0.4",
+    "@rdfjs/to-ntriples": "3.0.1",
+    "rdf-canonize": "5.0.0"
+  },
+  "devDependencies": { "n3": "2.13.12" },
+  "license": "MIT"
+}

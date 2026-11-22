@@ -12,7 +12,7 @@
     "test:conformance": "node scripts/run-conformance.js",
     "test:packaging": "node --test scripts/package-safeguards.test.js",
     "test:docs": "node --test scripts/readme-examples.test.js",
-    "test": "npm run test:packaging && npm run test:docs && npm test --workspace=packages/core --workspace=packages/memory --workspace=packages/file --workspace=packages/sparql --workspace=packages/neo4j"
+    "test": "npm run test:packaging && npm run test:docs && npm test --workspace=packages/core --workspace=packages/memory --workspace=packages/file --workspace=packages/sparql --workspace=packages/neo4j --workspace=packages/dataset"
   },
   "author": "Craig Parravicini",
   "contributors": [
