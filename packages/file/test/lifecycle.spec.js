@@ -1,3 +1,4 @@
+import { DataFactory as F } from 'n3';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -17,24 +18,55 @@ describe('file lifecycle', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   it('reacquires default/named handles, preserves other graphs and detached cursors', async () => {
-    for (const name of ['', 'named']) {
-      const graph = client.getGraph(name); await graph.add('urn:s', 'urn:p', '"value"');
+    for (const name of [F.defaultGraph(), F.namedNode('urn:named')]) {
+      const graph = client.getGraph(name); await graph.add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('value'));
       const cursor = await graph.find(); const closing = graph.close(); assert.equal(graph.close(), closing); await closing;
       const fresh = client.getGraph(name); assert.notEqual(fresh, graph); assert.equal(await fresh.count(), 1);
-      for (const call of [() => graph.add('urn:s', 'urn:p', '"x"'), () => graph.remove(), () => graph.find(), () => graph.has(), () => graph.count(), () => graph.clear()]) await assert.rejects(call(), /closed/);
+      for (const call of [() => graph.add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('x')), () => graph.remove(), () => graph.find(), () => graph.has(), () => graph.count(), () => graph.clear()]) await assert.rejects(call(), /closed/);
       assert.equal(await cursor.next(), true);
     }
-    const owned = client.getGraph('named'); const closing = client.close(); assert.equal(client.close(), closing); await closing;
+    const owned = client.getGraph(F.namedNode('urn:named')); const closing = client.close(); assert.equal(client.close(), closing); await closing;
     assert.throws(() => client.getGraph(), /closed/);
-    for (const call of [() => owned.add('urn:s', 'urn:p', '"x"'), () => owned.remove(), () => owned.find(), () => owned.has(), () => owned.count(), () => owned.clear()]) await assert.rejects(call(), /closed/);
+    for (const call of [() => owned.add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('x')), () => owned.remove(), () => owned.find(), () => owned.has(), () => owned.count(), () => owned.clear()]) await assert.rejects(call(), /closed/);
+  });
+  for (const afterCommit of [false, true]) {
+    it(`reloads after ${afterCommit ? 'ambiguous committed' : 'pre-commit'} write rejection and recovers its queue`, async () => {
+      const graph = client.getGraph();
+      const s = F.namedNode('urn:s'), p = F.namedNode('urn:p');
+      await graph.add(s, p, F.literal('old'));
+      const storage = client._storage, write = storage.write.bind(storage);
+      const fault = new Error('injected write rejection');
+      storage.write = async (...args) => { if (afterCommit) await write(...args); throw fault; };
+      await assert.rejects(graph.add(s, p, F.literal('candidate')), error => error === fault);
+      storage.write = write;
+      assert.equal(await graph.has(s, p, F.literal('candidate')), afterCommit);
+      assert.equal(await graph.has(s, p, F.literal('old')), true);
+      await graph.add(s, p, F.literal('recovery'));
+      await graph.close();
+      const fresh = client.getGraph();
+      assert.equal(fresh._store, graph._store);
+      assert.equal(await fresh.count(), afterCommit ? 3 : 2);
+    });
+  }
+  it('does not cache failed loads and performs no I/O for malformed terms', async () => {
+    const graph = client.getGraph(), storage = client._storage;
+    const read = storage.read.bind(storage); let reads = 0;
+    storage.read = async () => { reads++; throw new Error('injected read'); };
+    await assert.rejects(graph.add('urn:s', F.namedNode('urn:p'), F.literal('x')), TypeError);
+    assert.equal(reads, 0);
+    await assert.rejects(graph.count(), /injected read/);
+    storage.read = read;
+    assert.equal(await graph.count(), 0);
+    await graph.add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('ok'));
+    assert.equal(await graph.count(), 1);
   });
   for (const closeClient of [false, true]) {
     it(`serializes overlapping operations and drains delayed persistence before ${closeClient ? 'client' : 'graph'} close`, async () => {
       const graph = client.getGraph(); const entered = deferred(), release = deferred();
       const storage = client._storage; const write = storage.write.bind(storage); let calls = 0;
       storage.write = async (...args) => { if (++calls === 1) { entered.resolve(); await release.promise; } return write(...args); };
-      const first = graph.add('urn:s', 'urn:p', '"one"');
-      const second = graph.add('urn:s', 'urn:p', '"two"');
+      const first = graph.add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('one'));
+      const second = graph.add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('two'));
       const count = graph.count();
       await entered.promise;
       let closed = false;

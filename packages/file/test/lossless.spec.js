@@ -1,3 +1,6 @@
+import { DataFactory as F } from 'n3';
+import { snapshotTerm, createQuad } from '../../core/RdfTerm.js';
+const term = value => snapshotTerm(value);
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -16,12 +19,14 @@ describe('Public file graph round trips', () => {
       DriverManager.registerDriver(new FileDriver());
       const url = `jssgdbc:file:${directory}`;
       client = await DriverManager.getClient(url);
-      await assert.rejects(client.getGraph().add('urn:s', 'urn:p', 'bare'), /object/);
+      await assert.rejects(client.getGraph().add(F.namedNode('urn:s'), F.namedNode('urn:p'), 'bare'), /object/);
       assert.deepEqual(await fs.readdir(directory), []);
       await client.getGraph().count(); // Reserve the exact identity before corrupting its payload.
       await client.getGraph().close();
-      const file = path.join(directory, client._storage.key(''), 'graph.nt');
+      const file = path.join(directory, client._storage.key(F.defaultGraph()), 'graph.nt');
       await fs.writeFile(file, '<urn:s> <urn:p> "unfinished .');
+      await client.close();
+      client = await DriverManager.getClient(url);
       await assert.rejects(client.getGraph().count(), /line/i);
       await client.close();
       await fs.rm(file);
@@ -33,7 +38,7 @@ describe('Public file graph round trips', () => {
       client = await DriverManager.getClient(url);
       assert.equal(await client.getGraph().count(), 0);
       await fs.mkdir(file);
-      await assert.rejects(client.getGraph().add('urn:s', 'urn:p', '"value"'), /File storage/);
+      await assert.rejects(client.getGraph().add(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('value')), /File storage/);
     } finally {
       await client?.close();
       DriverManager.clear();
@@ -45,25 +50,26 @@ describe('Public file graph round trips', () => {
   it('preserves distinct term identities and lexical content after close/reopen', async () => {
     const directory = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'jssgdbc-terms-'));
     const drivers = DriverManager.getDrivers();
-    const objects = ['urn:o', '"urn:o"', '"mail@example.org^^type"', String.raw`"quote \" slash \\ 雪😀\n\t"`,
-      '"001"^^<http://www.w3.org/2001/XMLSchema#integer>', '"bonjour"@fr-ca', '"text"', '_:local'];
+    const objects = [F.namedNode('urn:o'), F.literal('urn:o'), F.literal('mail@example.org^^type'),
+      F.literal('quote " slash \\ 雪😀\n\t'), F.literal('001', F.namedNode('http://www.w3.org/2001/XMLSchema#integer')),
+      F.literal('bonjour', 'fr-ca'), F.literal('text'), F.blankNode('local')].map(term);
     let client;
     try {
       DriverManager.clear();
       DriverManager.registerDriver(new FileDriver());
       const url = `jssgdbc:file:${directory}`;
       client = await DriverManager.getClient(url);
-      for (const object of objects) await client.getGraph().add('<urn:s>', '<urn:p>', object);
+      for (const object of objects) await client.getGraph().add(F.namedNode('urn:s'), F.namedNode('urn:p'), object);
       await client.close();
       client = await DriverManager.getClient(url);
       const graph = client.getGraph();
       assert.deepEqual((await graph.find()).getTriples().map(t => t.object), objects);
-      for (const object of objects) assert.equal(await graph.count('urn:s', 'urn:p', object), 1);
-      await graph.remove(null, null, '"urn:o"');
-      assert.equal(await graph.has(null, null, 'urn:o'), true);
+      for (const object of objects) assert.equal(await graph.count(F.namedNode('urn:s'), F.namedNode('urn:p'), object), 1);
+      await graph.remove(null, null, F.literal('urn:o'));
+      assert.equal(await graph.has(null, null, F.namedNode('urn:o')), true);
       await client.close();
       client = await DriverManager.getClient(url);
-      assert.equal(await client.getGraph().has(null, null, '"urn:o"'), false);
+      assert.equal(await client.getGraph().has(null, null, F.literal('urn:o')), false);
     } finally {
       await client?.close();
       DriverManager.clear();
@@ -73,28 +79,28 @@ describe('Public file graph round trips', () => {
   });
 });
 
-describe('Lossless string contract: strict file codec', () => {
-  const triple = { subject: '<urn:s>', predicate: '<urn:p>', object: '"value"' };
+describe('Lossless typed contract: strict file codec', () => {
+  const triple = createQuad(F.namedNode('urn:s'), F.namedNode('urn:p'), F.literal('value'));
   it('accepts comments, CRLF, empty documents and stable document blank labels', () => {
     assert.deepEqual(P.parse(''), []);
     assert.equal(S.serialize([]), '');
-    const rows = P.parse('# heading\r\n_:b <urn:p> "a@b^^c" . # trailing\r\n_:b <urn:p> "second" .');
-    assert.equal(rows[0].subject, rows[1].subject);
-    assert.equal(rows[0].object, '"a@b^^c"');
+    const rows = P.parse('# heading\r\n_:b62 <urn:p> "a@b^^c" . # trailing\r\n_:b62 <urn:p> "second" .');
+    assert.deepEqual(rows[0].subject, rows[1].subject);
+    assert.equal(rows[0].object.value, 'a@b^^c');
   });
   it('canonicalizes only RDF-equivalent lexical syntax', () => {
-    assert.equal(P.parseLine('<urn:s> <urn:p> "text"^^<http://www.w3.org/2001/XMLSchema#string> .').object, '"text"');
-    assert.equal(P.parseLine('<urn:s> <urn:p> "text"@EN-us .').object, '"text"@en-us');
-    assert.equal(P.parseLine('<urn:s> <urn:p> "\\u96EA\\U0001F600" .').object, '"雪😀"');
+    assert.equal(P.parseLine('<urn:s> <urn:p> "text"^^<http://www.w3.org/2001/XMLSchema#string> .').object.value, 'text');
+    assert.equal(P.parseLine('<urn:s> <urn:p> "text"@EN-us .').object.language, 'en-us');
+    assert.equal(P.parseLine('<urn:s> <urn:p> "\\u96EA\\U0001F600" .').object.value, '雪😀');
   });
   it('preserves control escape values through repeated serialization', () => {
-    const object = String.raw`"\t\n\r\b\f\u0000"`;
+    const object = F.literal('\t\n\r\b\f\u0000');
     const once = S.serializeLine({ ...triple, object });
     assert.equal(S.serializeLine(P.parseLine(once)), once);
   });
   it('reports document line and serialization field/index with causes', () => {
     assert.throws(() => P.parse('# heading\n\n<urn:s> <urn:p> "bad\\x" .'), error => /line 3/.test(error.message) && !!error.cause);
-    assert.throws(() => S.serialize([triple, { ...triple, predicate: '_:b' }]), /index 1: Invalid predicate/);
+    assert.throws(() => S.serialize([triple, { ...triple, predicate: '_:b' }]), /index 1: .*predicate/);
   });
   for (const invalid of [null, [], {}, { ...triple, graph: '<urn:g>' },
     { ...triple, subject: '"literal"' }, { ...triple, predicate: '_:b' },
@@ -105,7 +111,7 @@ describe('Lossless string contract: strict file codec', () => {
   for (const object of ['"mail@example.org"', '"a^^b"', '"mail@example.org^^type"',
     '"quote \\" slash \\\\ 雪"', '"001"^^<http://www.w3.org/2001/XMLSchema#integer>']) {
     it(`preserves literal content ${object}`, () => {
-      const triple = { subject: '<urn:s>', predicate: '<urn:p>', object };
+      const triple = P.parseLine(`<urn:s> <urn:p> ${object} .`);
       assert.deepEqual(P.parseLine(S.serializeLine(triple)), triple);
     });
   }
