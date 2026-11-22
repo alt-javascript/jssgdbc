@@ -4,3 +4,12 @@ export class UnsupportedOperationError extends Error {
     this.name = 'UnsupportedOperationError';
   }
 }
+
+export class UnsupportedRdfFeatureError extends UnsupportedOperationError {
+  constructor(message, feature, position) {
+    super(message);
+    this.name = 'UnsupportedRdfFeatureError';
+    this.feature = feature;
+    this.position = position;
+  }
+}

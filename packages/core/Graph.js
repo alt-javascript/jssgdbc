@@ -1,10 +1,10 @@
 import { UnsupportedOperationError } from './errors.js';
-import { normalizeTerm } from './StringTerm.js';
+import { snapshotTerm, defaultGraph } from './RdfTerm.js';
 
 export class Graph {
-  constructor(client, name) {
+  constructor(client, name = defaultGraph()) {
     this._client = client;
-    this._name = name;
+    this._name = snapshotTerm(name, 'graph');
     this._closed = false;
     this._closePromise = null;
     this._activeOperations = new Set();
@@ -16,7 +16,7 @@ export class Graph {
 
   async add(subject, predicate, object) {
     this._checkClosed();
-    return this._runOperation(() => this._add(normalizeTerm(subject, 'subject'), normalizeTerm(predicate, 'predicate'), normalizeTerm(object)));
+    return this._runOperation(() => this._add(snapshotTerm(subject, 'subject'), snapshotTerm(predicate, 'predicate'), snapshotTerm(object)));
   }
 
   async remove(subject, predicate, object) {
@@ -40,7 +40,7 @@ export class Graph {
   }
 
   _pattern(subject, predicate, object) {
-    return [normalizeTerm(subject, 'subject', true), normalizeTerm(predicate, 'predicate', true), normalizeTerm(object, 'object', true)];
+    return [snapshotTerm(subject, 'subject', true), snapshotTerm(predicate, 'predicate', true), snapshotTerm(object, 'object', true)];
   }
 
   async clear() {

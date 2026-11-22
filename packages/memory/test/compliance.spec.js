@@ -1,7 +1,6 @@
-import { expect } from 'chai';
 import { DriverManager } from '@alt-javascript/jssgdbc-core';
 import { MemoryDriver } from '../MemoryDriver.js';
-import driverComplianceTests from '@alt-javascript/jssgdbc-core/test/driverCompliance.js';
+import { typedGraphComplianceTests } from '../../core/test/typedCompliance.js';
 
 async function clientFactory() {
   DriverManager.clear();
@@ -10,4 +9,4 @@ async function clientFactory() {
   return DriverManager.getClient('jssgdbc:memory:');
 }
 
-driverComplianceTests('MemoryDriver Compliance', clientFactory);
+typedGraphComplianceTests('MemoryDriver Compliance', clientFactory);

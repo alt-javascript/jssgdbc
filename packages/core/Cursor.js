@@ -1,3 +1,7 @@
+import { createQuad } from './RdfTerm.js';
+const copy = row => row.termType === 'Quad'
+  ? createQuad(row.subject, row.predicate, row.object, row.graph) : { ...row };
+
 export class Cursor {
   constructor(triples = []) {
     this._triples = triples;
@@ -14,12 +18,12 @@ export class Cursor {
   getTriple() {
     this._checkClosed();
     this._checkCursor();
-    return { ...this._triples[this._cursor] };
+    return copy(this._triples[this._cursor]);
   }
 
   getTriples() {
     this._checkClosed();
-    return this._triples.map(t => ({ ...t }));
+    return this._triples.map(copy);
   }
 
   close() {

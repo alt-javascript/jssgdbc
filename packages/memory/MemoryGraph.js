@@ -1,5 +1,6 @@
 import { Graph } from '../core/Graph.js';
 import { Cursor } from '../core/Cursor.js';
+import { createQuad } from '../core/RdfTerm.js';
 
 export class MemoryGraph extends Graph {
   constructor(client, name, store) {
@@ -8,11 +9,9 @@ export class MemoryGraph extends Graph {
   }
 
   _add(subject, predicate, object) {
-    const triple = { subject, predicate, object };
+    const triple = createQuad(subject, predicate, object, this._name);
     const exists = this._store.some(t =>
-      t.subject === subject &&
-      t.predicate === predicate &&
-      t.object === object
+      t.equals(triple)
     );
     if (!exists) {
       this._store.push(triple);
@@ -44,9 +43,9 @@ export class MemoryGraph extends Graph {
   }
 
   _count(subject, predicate, object) {
-    return this._store.filter(t =>
-      this._matchesPattern(t, subject, predicate, object)
-    ).length;
+    let count = 0;
+    for (const t of this._store) if (this._matchesPattern(t, subject, predicate, object)) count++;
+    return count;
   }
 
   _clear() {
@@ -55,8 +54,8 @@ export class MemoryGraph extends Graph {
   }
 
   _matchesPattern(triple, subject, predicate, object) {
-    return (subject === null || subject === undefined || triple.subject === subject) &&
-           (predicate === null || predicate === undefined || triple.predicate === predicate) &&
-           (object === null || object === undefined || triple.object === object);
+    return (subject === null || subject === undefined || triple.subject.equals(subject)) &&
+           (predicate === null || predicate === undefined || triple.predicate.equals(predicate)) &&
+           (object === null || object === undefined || triple.object.equals(object));
   }
 }

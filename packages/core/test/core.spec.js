@@ -1,3 +1,4 @@
+import { namedNode as n } from './terms.js';
 import { expect } from 'chai';
 import { Driver, DriverManager, Client, ClientDataSource, Graph, Cursor, UnsupportedOperationError } from '../index.js';
 
@@ -228,10 +229,10 @@ describe('Cursor iteration', () => {
 
 describe('Graph abstract stubs', () => {
   it('add() throws UnsupportedOperationError', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
 
     try {
-      await graph.add('urn:s', 'urn:p', 'urn:o');
+      await graph.add(n('urn:s'), n('urn:p'), n('urn:o'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -239,10 +240,10 @@ describe('Graph abstract stubs', () => {
   });
 
   it('remove() throws UnsupportedOperationError', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
 
     try {
-      await graph.remove('urn:s', 'urn:p', 'urn:o');
+      await graph.remove(n('urn:s'), n('urn:p'), n('urn:o'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -250,10 +251,10 @@ describe('Graph abstract stubs', () => {
   });
 
   it('find() throws UnsupportedOperationError', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
 
     try {
-      await graph.find('urn:s', 'urn:p', 'urn:o');
+      await graph.find(n('urn:s'), n('urn:p'), n('urn:o'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -261,10 +262,10 @@ describe('Graph abstract stubs', () => {
   });
 
   it('has() throws UnsupportedOperationError', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
 
     try {
-      await graph.has('urn:s', 'urn:p', 'urn:o');
+      await graph.has(n('urn:s'), n('urn:p'), n('urn:o'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -272,10 +273,10 @@ describe('Graph abstract stubs', () => {
   });
 
   it('count() throws UnsupportedOperationError', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
 
     try {
-      await graph.count('urn:s', 'urn:p', 'urn:o');
+      await graph.count(n('urn:s'), n('urn:p'), n('urn:o'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(UnsupportedOperationError);
@@ -283,7 +284,7 @@ describe('Graph abstract stubs', () => {
   });
 
   it('clear() throws UnsupportedOperationError', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
 
     try {
       await graph.clear();
@@ -294,11 +295,11 @@ describe('Graph abstract stubs', () => {
   });
 
   it('after close(), add() throws closed error before stub', async () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
     graph.close();
 
     try {
-      await graph.add('urn:s', 'urn:p', 'urn:o');
+      await graph.add(n('urn:s'), n('urn:p'), n('urn:o'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(Error);
@@ -307,7 +308,7 @@ describe('Graph abstract stubs', () => {
   });
 
   it('close() sets isClosed() to true', () => {
-    const graph = new Graph(null, 'test');
+    const graph = new Graph(null, n('urn:test'));
     expect(graph.isClosed()).to.be.false;
 
     graph.close();
@@ -315,8 +316,8 @@ describe('Graph abstract stubs', () => {
   });
 
   it('getName() returns graph name', () => {
-    const graph = new Graph(null, 'myGraph');
-    expect(graph.getName()).to.equal('myGraph');
+    const graph = new Graph(null, n('urn:myGraph'));
+    expect(graph.getName().equals(n('urn:myGraph'))).to.equal(true);
   });
 });
 
@@ -350,7 +351,7 @@ describe('Client closed guard', () => {
     client.close();
 
     try {
-      client.getGraph('test');
+      client.getGraph(n('urn:test'));
       expect.fail('should have thrown');
     } catch (e) {
       expect(e).to.be.instanceof(Error);
@@ -368,8 +369,8 @@ describe('Client closed guard', () => {
     const mockDriver = { acceptsURL() { }, async connect() { } };
     const client = new TestClient(mockDriver, 'jssgdbc:test:', {});
 
-    const graph1 = client.getGraph('test');
-    const graph2 = client.getGraph('test');
+    const graph1 = client.getGraph(n('urn:test'));
+    const graph2 = client.getGraph(n('urn:test'));
 
     expect(graph1).to.equal(graph2);
   });
@@ -384,8 +385,8 @@ describe('Client closed guard', () => {
     const mockDriver = { acceptsURL() { }, async connect() { } };
     const client = new TestClient(mockDriver, 'jssgdbc:test:', {});
 
-    const graph1 = client.getGraph('graph1');
-    const graph2 = client.getGraph('graph2');
+    const graph1 = client.getGraph(n('urn:graph1'));
+    const graph2 = client.getGraph(n('urn:graph2'));
 
     expect(graph1).to.not.equal(graph2);
   });

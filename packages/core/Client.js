@@ -1,5 +1,8 @@
 import { UnsupportedOperationError } from './errors.js';
 import { DriverManager } from './DriverManager.js';
+import { snapshotTerm, termKey, defaultGraph } from './RdfTerm.js';
+import { createCapabilities } from './Capabilities.js';
+const UNKNOWN_CAPABILITIES = createCapabilities();
 
 export class Client {
   constructor(driver, url, properties) {
@@ -12,13 +15,17 @@ export class Client {
     this._ownedGraphs = new Set();
   }
 
-  getGraph(name = '') {
+  getCapabilities() { return UNKNOWN_CAPABILITIES; }
+
+  getGraph(name = defaultGraph()) {
     this._checkClosed();
-    if (this._graphs.has(name)) {
-      return this._graphs.get(name);
+    const identity = snapshotTerm(name, 'graph');
+    const key = termKey(identity);
+    if (this._graphs.has(key)) {
+      return this._graphs.get(key);
     }
-    const graph = this._getGraph(name);
-    this._graphs.set(name, graph);
+    const graph = this._getGraph(identity);
+    this._graphs.set(key, graph);
     this._ownedGraphs.add(graph);
     return graph;
   }
@@ -32,8 +39,9 @@ export class Client {
   }
 
   _graphClosing(graph) {
-    if (this._graphs.get(graph.getName()) === graph) {
-      this._graphs.delete(graph.getName());
+    const key = termKey(graph.getName());
+    if (this._graphs.get(key) === graph) {
+      this._graphs.delete(key);
     }
     // Ownership survives cache eviction until resource cleanup settles.
   }

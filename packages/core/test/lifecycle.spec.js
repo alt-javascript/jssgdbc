@@ -1,3 +1,4 @@
+import { namedNode as n } from './terms.js';
 import assert from 'node:assert/strict';
 import { Client, Graph } from '../index.js';
 
@@ -21,12 +22,12 @@ describe('core lifecycle', () => {
       graph[`_${method}`] = () => gate.promise;
       graph._close = () => { events.push('graph'); };
       client._close = () => { events.push('client'); };
-      const operation = graph[method]('urn:s', 'urn:p', 'urn:o');
+      const operation = graph[method](n('urn:s'), n('urn:p'), n('urn:o'));
       const closing = client.close();
       assert.equal(client.isClosed(), true);
       assert.equal(closing, client.close());
       assert.throws(() => client.getGraph(), /closed/);
-      for (const name of operations) await assert.rejects(graph[name]('urn:s', 'urn:p', 'urn:o'), /closed/);
+      for (const name of operations) await assert.rejects(graph[name](n('urn:s'), n('urn:p'), n('urn:o')), /closed/);
       assert.deepEqual(events, []);
       gate.resolve(42);
       assert.equal(await operation, 42);
@@ -41,8 +42,8 @@ describe('core lifecycle', () => {
 
   it('retains evicted closing ownership and aggregates every cleanup failure', async () => {
     const client = new TestClient();
-    const first = client.getGraph('first');
-    const second = client.getGraph('second');
+    const first = client.getGraph(n('urn:first'));
+    const second = client.getGraph(n('urn:second'));
     const gate = deferred();
     const errors = [new Error('first'), new Error('second'), new Error('release')];
     const events = [];
@@ -52,7 +53,7 @@ describe('core lifecycle', () => {
     const firstClose = first.close();
     const firstRejected = assert.rejects(firstClose, error => error === errors[0]);
     assert.equal(firstClose, first.close());
-    const replacement = client.getGraph('first');
+    const replacement = client.getGraph(n('urn:first'));
     assert.notEqual(replacement, first);
     const closing = client.close();
     const rejected = assert.rejects(closing, error => {
@@ -72,16 +73,16 @@ describe('core lifecycle', () => {
 
   it('never evicts a replacement handle when old cleanup settles or repeats', async () => {
     const client = new TestClient();
-    const old = client.getGraph('named');
+    const old = client.getGraph(n('urn:named'));
     const gate = deferred();
     old._close = () => gate.promise;
     const closing = old.close();
-    const fresh = client.getGraph('named');
+    const fresh = client.getGraph(n('urn:named'));
     gate.resolve();
     await closing;
     await old.close();
     client._graphClosing(old); // A stale notification must not evict the fresh cache entry.
-    assert.equal(client.getGraph('named'), fresh);
+    assert.equal(client.getGraph(n('urn:named')), fresh);
     assert.equal(client._ownedGraphs.size, 1);
     await client.close();
   });
@@ -139,7 +140,7 @@ describe('core lifecycle', () => {
   });
 
   it('releases tracking after synchronous implementation and validation errors', async () => {
-    const graph = new Graph(null, 'standalone');
+    const graph = new Graph(null, n('urn:standalone'));
     await assert.rejects(graph.count(), /not implemented/);
     await assert.rejects(graph.add(null, 'urn:p', 'urn:o'));
     assert.equal(graph._activeOperations.size, 0);
