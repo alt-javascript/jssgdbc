@@ -25,7 +25,7 @@
   "homepage": "https://github.com/alt-javascript/jssgdbc/tree/main/packages/neo4j",
   "scripts": {
     "prepublishOnly": "node ../../scripts/prevent-publish.js",
-    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js test/neo4j-graph.test.js test/integration-runner.test.js test/lifecycle.test.js",
+    "test": "node --test test/cypher-builder.test.js test/neo4j-client.test.js test/neo4j-graph.test.js test/integration-runner.test.js test/lifecycle.test.js test/dataset.test.js test/schema.test.js",
     "test:integration": "node test/run-integration.js"
   },
   "dependencies": {

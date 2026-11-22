@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Neo4jDriver } from '../Neo4jDriver.js';
-import { CONSTRAINTS } from '../RdfStorage.js';
+import { CONSTRAINTS, INSPECT_SCHEMA, ENSURE_SCHEMA, SCHEMA_PARAMS } from '../RdfStorage.js';
 
 const url = 'jssgdbc:neo4j:bolt://localhost:7687';
 const secretError = (code = 'Neo.ClientError.Security.Unauthorized') => Object.assign(new Error('secret password query params'), { code });
@@ -18,6 +18,9 @@ function fixture(fail = {}) {
         return work({ run: async (query, params) => {
           calls.runs.push({ query, params });
           if (fail.query) throw fail.query;
+          if (fail.queryAt === query) throw secretError();
+          if (query === INSPECT_SCHEMA) return { records: [{ get: key => ({ legacy: false, owned: false, markers: [SCHEMA_PARAMS] })[key] }] };
+          if (query === ENSURE_SCHEMA) return { records: [{ get: () => SCHEMA_PARAMS }] };
           return fail.result ?? { records: [{ value: 'exact' }] };
         } });
       };
@@ -62,10 +65,10 @@ test('connect verifies connectivity and installs composite constraint before ret
   assert.deepEqual(f.calls.factory[1], { scheme: 'basic', principal: 'user', credentials: 'password' });
   assert.equal(f.calls.factory[2].connectionTimeout, 456);
   assert.equal(f.calls.factory[2].connectionAcquisitionTimeout, 456);
-  assert.deepEqual(f.calls.runs.map(run => run.query), CONSTRAINTS);
+  assert.deepEqual(f.calls.runs.map(run => run.query), [INSPECT_SCHEMA, ...CONSTRAINTS, INSPECT_SCHEMA, ENSURE_SCHEMA, INSPECT_SCHEMA]);
   assert.deepEqual(f.calls.runs[0].params, {});
   assert.equal(f.calls.sessions[0].options.database, 'test');
-  assert.deepEqual(f.calls.transactions[0], { mode: 'write', config: { timeout: 123 } });
+  assert.deepEqual(f.calls.transactions[0], { mode: 'read', config: { timeout: 123 } });
   assert.equal(f.calls.sessions[0].closes, 1);
   assert.equal(client.isClosed(), false);
   await client.close();
@@ -77,9 +80,9 @@ test('read/write operations buffer records and keep params separate with one clo
   const params = { value: 'secret' };
   assert.deepEqual(await client._query('RETURN $value', params), [{ value: 'exact' }]);
   await client._update('RETURN $value', params);
-  assert.deepEqual(f.calls.transactions.map(t => t.mode), ['write', 'read', 'write']);
-  assert.equal(f.calls.runs[CONSTRAINTS.length].params, params);
-  assert.equal(f.calls.runs[CONSTRAINTS.length].query, 'RETURN $value');
+  assert.deepEqual(f.calls.transactions.map(t => t.mode), ['read', 'write', 'write', 'read', 'write']);
+  assert.equal(f.calls.runs[CONSTRAINTS.length + 4].params, params);
+  assert.equal(f.calls.runs[CONSTRAINTS.length + 4].query, 'RETURN $value');
   assert.ok(f.calls.sessions.every(s => s.closes === 1));
   await client.close();
 });
@@ -102,6 +105,19 @@ for (const stage of ['factory', 'verify', 'session', 'transaction', 'query', 'cl
       return true;
     });
     assert.equal(f.calls.closes, stage === 'factory' ? 0 : 1);
+    assert.ok(f.calls.sessions.every(s => s.closes === 1));
+  });
+}
+
+for (const queryAt of [...CONSTRAINTS, ENSURE_SCHEMA]) {
+  test(`later initialization failure releases sessions and driver: ${queryAt.split(' ')[0]}`, async () => {
+    const f = fixture({ queryAt });
+    await assert.rejects(f.driver.connect(url), error => {
+      assert.match(error.message, /Neo4j initialize failed/);
+      assert.doesNotMatch(error.stack, /secret|password/);
+      return true;
+    });
+    assert.equal(f.calls.closes, 1);
     assert.ok(f.calls.sessions.every(s => s.closes === 1));
   });
 }

@@ -12,6 +12,43 @@ export const CONSTRAINTS = Object.freeze([
   `CREATE CONSTRAINT jssgdbc_rdf_schema_identity IF NOT EXISTS FOR (m:${LABELS.schema}) REQUIRE m.id IS UNIQUE`
 ]);
 
+// Counts only adapter-owned storage; unrelated application labels are permitted.
+export const INSPECT_SCHEMA = `CALL { MATCH (n:JssgdbcTerm) RETURN count(n) AS legacyNodes }
+CALL { MATCH ()-[r:JSSGDBC_TRIPLE]->() RETURN count(r) AS legacyEdges }
+CALL { MATCH (n) WHERE n:${LABELS.term} OR n:${LABELS.graph} RETURN count(n) AS ownedNodes }
+CALL { MATCH ()-[r:${LABELS.triple}]->() RETURN count(r) AS ownedEdges }
+CALL { MATCH (m:${LABELS.schema}) RETURN collect(properties(m)) AS markers }
+RETURN legacyNodes > 0 OR legacyEdges > 0 AS legacy,
+ownedNodes > 0 OR ownedEdges > 0 AS owned, markers`;
+export const ENSURE_SCHEMA = `MERGE (m:${LABELS.schema} {id: $id})
+ON CREATE SET m.version = $version, m.profile = $profile
+SET m._jssgdbcLock = true
+REMOVE m._jssgdbcLock
+RETURN properties(m) AS marker`;
+export const SCHEMA_PARAMS = Object.freeze({ id: SCHEMA_ID, version: STORAGE_VERSION, profile: STORAGE_PROFILE });
+
+export class StorageCompatibilityError extends Error {
+  constructor() {
+    super('Neo4j initialize: incompatible RDF storage schema/profile. Use a separate database or explicitly back up and reset adapter-owned storage under operator control; no automatic reset was performed.');
+    this.name = 'StorageCompatibilityError';
+  }
+}
+export function validateMarker(marker) {
+  if (!marker || marker.id !== SCHEMA_ID || marker.version !== STORAGE_VERSION || marker.profile !== STORAGE_PROFILE) {
+    throw new StorageCompatibilityError();
+  }
+}
+export function validateSchema(result) {
+  try {
+    if (!Array.isArray(result?.records) || result.records.length !== 1) throw new Error();
+    const row = result.records[0];
+    const legacy = row.get('legacy'), owned = row.get('owned'), markers = row.get('markers');
+    if (typeof legacy !== 'boolean' || typeof owned !== 'boolean' || !Array.isArray(markers)
+        || legacy || markers.length > 1 || (owned && markers.length === 0)) throw new Error();
+    for (const marker of markers) validateMarker(marker);
+  } catch { throw new StorageCompatibilityError(); }
+}
+
 export function graphKey(graph = defaultGraph()) {
   return termKey(snapshotTerm(graph, 'graph'));
 }

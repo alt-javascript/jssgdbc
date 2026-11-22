@@ -84,6 +84,20 @@ test('lifecycle drains transaction continuation and session cleanup before nativ
   assert.equal(graph._activeOperations.size, 0);
 });
 
+test('lifecycle drains admitted direct queries without graph ownership', async () => {
+  const f = fixture(); f.gate = deferred(); f.cleanupGate = deferred();
+  const operation = f.client._query('RETURN 1');
+  const closing = f.client.close();
+  await assert.rejects(f.client._query('RETURN 2'), /closed/);
+  f.gate.resolve();
+  await new Promise(r => setImmediate(r));
+  assert.equal(f.events.includes('driver closed'), false);
+  f.cleanupGate.resolve();
+  await Promise.all([operation, closing]);
+  assert.deepEqual(f.events.slice(-2), ['session closed', 'driver closed']);
+  assert.equal(f.client._operations.size, 0);
+});
+
 test('lifecycle preserves sanitized operation and session failures while draining', async () => {
   const f = fixture(); f.fail = true; f.gate = deferred();
   const operation = f.client.getGraph().find();
