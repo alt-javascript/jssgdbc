@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { n, l, q } from './helpers/terms.js';
 import { readFile } from 'node:fs/promises';
 import { DriverManager, SparqlDriver } from '@alt-javascript/jssgdbc-sparql';
 import { startMockSparqlEndpoint } from './helpers/mock-sparql-endpoint.js';
@@ -72,14 +73,14 @@ describe('Executable SPARQL README examples', () => {
   it('executes read-only quick-start with literal results, headers and cleanup', async () => {
     const seed = await DriverManager.getClient(`jssgdbc:sparql:${fixture.endpoint}`);
     const graph = seed.getGraph();
-    await graph.add(subject, predicate, '"Berlin"@en');
+    await graph.add(n(subject), n(predicate), l('Berlin', 'en'));
     graph.close();
     seed.close();
     handles = [];
     fixture.requests.length = 0;
     const { readExample } = await example('read-only');
     assert.deepEqual(await readExample(fixture.endpoint, { 'X-Example': 'configured' }), [
-      { subject, predicate, object: '"Berlin"@en' }
+      q(n(subject), n(predicate), l('Berlin', 'en'))
     ]);
     assertClosed(3);
     assert.deepEqual(fixture.requests.map(({ method, operation, graph }) => [method, operation, graph]),
@@ -99,7 +100,7 @@ describe('Executable SPARQL README examples', () => {
     assert.deepEqual(await writeExample(fixture.endpoint, {
       allowWrites: true, headers: { 'X-Example': 'writable' }
     }), {
-      rows: [{ subject: 'https://example.org/items/demo', predicate, object: '"Demo"@en' }],
+      rows: [q(n('https://example.org/items/demo'), n(predicate), l('Demo', 'en'), n(namedGraph))],
       present: true, count: 1, afterRemove: false, afterClear: 0,
       defaultPreserved: true, defaultAfterRemove: false
     });

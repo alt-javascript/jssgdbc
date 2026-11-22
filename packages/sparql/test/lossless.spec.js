@@ -1,11 +1,12 @@
+import { n, l } from './helpers/terms.js';
 import assert from 'node:assert/strict';
 import { SparqlClient } from '../SparqlClient.js';
 
-describe('Lossless string contract: SPARQL result boundary (deterministic)', () => {
+describe('Lossless structural RDF contract: SPARQL result boundary (deterministic)', () => {
   const uri = value => ({ type: 'uri', value });
   async function decode(objects) {
     const client = new SparqlClient(null, 'jssgdbc:sparql:http://localhost:1/');
-    client._query = async () => ({ results: { bindings: objects.map(o => ({ s: uri('urn:s'), p: uri('urn:p'), o })) } });
+    client._query = async () => ({ head: { vars: ['s', 'p', 'o'] }, results: { bindings: objects.map(o => ({ s: uri('urn:s'), p: uri('urn:p'), o })) } });
     try { return (await client.getGraph().find()).getTriples().map(t => t.object); }
     finally { await client.close(); }
   }
@@ -13,12 +14,12 @@ describe('Lossless string contract: SPARQL result boundary (deterministic)', () 
     assert.deepEqual(await decode([uri('urn:o'), { type: 'literal', value: 'urn:o' },
       { type: 'literal', value: '001', datatype: 'http://www.w3.org/2001/XMLSchema#integer' },
       { type: 'literal', value: 'mail@example.org^^type' }]),
-    ['urn:o', '"urn:o"', '"001"^^<http://www.w3.org/2001/XMLSchema#integer>', '"mail@example.org^^type"']);
+    [n('urn:o'), l('urn:o'), l('001', '', 'http://www.w3.org/2001/XMLSchema#integer'), l('mail@example.org^^type')]);
   });
   it('canonicalizes RDF-equivalent string datatype and language tag case', async () => {
     assert.deepEqual(await decode([
       { type: 'literal', value: 'text', datatype: 'http://www.w3.org/2001/XMLSchema#string' },
       { type: 'literal', value: 'bonjour', 'xml:lang': 'FR' },
-    ]), ['"text"', '"bonjour"@fr']);
+    ]), [l('text'), l('bonjour', 'fr')]);
   });
 });

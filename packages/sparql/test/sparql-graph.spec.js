@@ -1,3 +1,4 @@
+import { n, b, l, d, q } from './helpers/terms.js';
 import assert from 'node:assert/strict';
 import { Cursor, Graph } from '@alt-javascript/jssgdbc-core';
 import { SparqlClient } from '../SparqlClient.js';
@@ -6,8 +7,10 @@ import { SparqlBuilder as B } from '../SparqlBuilder.js';
 
 const uri = value => ({ type: 'uri', value });
 const literal = value => ({ type: 'literal', value });
+const integer = value => ({ type: 'literal', value, datatype: 'http://www.w3.org/2001/XMLSchema#integer' });
+const counts = (...rows) => ({ head: { vars: ['count'] }, results: { bindings: rows } });
 const results = (...rows) => ({ head: { vars: ['s', 'p', 'o'] }, results: { bindings: rows } });
-function fixture(name = '') {
+function fixture(name = d()) {
   const client = new SparqlClient(null, 'jssgdbc:sparql:http://localhost:1/');
   const calls = [];
   let response = results();
@@ -22,21 +25,21 @@ describe('SparqlGraph', () => {
     assert.ok(graph instanceof Graph);
     assert.ok(graph instanceof SparqlGraph);
     assert.equal(client.getGraph(), graph);
-    assert.equal(graph.getName(), '');
-    assert.equal(client.getGraph('urn:g'), client.getGraph('urn:g'));
-    assert.notEqual(client.getGraph('urn:g'), graph);
-    assert.equal(client.getGraph('urn:g').getName(), 'urn:g');
+    assert.deepEqual(graph.getName(), d());
+    assert.equal(client.getGraph(n('urn:g')), client.getGraph(n('urn:g')));
+    assert.notEqual(client.getGraph(n('urn:g')), graph);
+    assert.deepEqual(client.getGraph(n('urn:g')).getName(), n('urn:g'));
   });
 
-  for (const name of ['', 'urn:g']) {
+  for (const name of [d(), n('urn:g')]) {
     it(`routes all operations through builders for ${name || 'default'}`, async () => {
       const f = fixture(name);
-      const terms = ['urn:s', 'urn:p', '"object"'];
+      const terms = [n('urn:s'), n('urn:p'), l('object')];
       f.respond(results({}));
       await f.graph.find(...terms);
       f.respond({ boolean: false });
       assert.equal(await f.graph.has(...terms), false);
-      f.respond(results({ count: literal('0') }));
+      f.respond(counts({ count: integer('0') }));
       assert.equal(await f.graph.count(...terms), 0);
       assert.equal(await f.graph.add(...terms), undefined);
       assert.equal(await f.graph.remove(...terms), undefined);
@@ -55,7 +58,7 @@ describe('SparqlGraph', () => {
     for (const wild of [null, undefined]) {
       it(`reconstructs bound positions mask=${mask}, wildcard=${wild}`, async () => {
         const f = fixture();
-        const bound = ['<urn:s>', 'urn:p', '"hello"@en'];
+        const bound = [n('urn:s'), n('urn:p'), l('hello', 'en')];
         const variables = ['s', 'p', 'o'];
         const pattern = bound.map((term, i) => mask & (1 << i) ? term : wild);
         const row = Object.fromEntries(variables.flatMap((v, i) => mask & (1 << i) ? [] : [[v, uri(`urn:${v}`)]]));
@@ -64,8 +67,7 @@ describe('SparqlGraph', () => {
         assert.ok(cursor instanceof Cursor);
         assert.throws(() => cursor.getTriple(), /out of bounds/);
         assert.equal(await cursor.next(), true);
-        assert.deepEqual(cursor.getTriple(), Object.fromEntries(['subject', 'predicate', 'object'].map((key, i) =>
-          [key, mask & (1 << i) ? bound[i].replace(/^<|>$/g, '') : `urn:${variables[i]}`])));
+        assert.deepEqual(cursor.getTriple(), q(...variables.map((v, i) => mask & (1 << i) ? bound[i] : n(`urn:${v}`))));
         assert.equal(await cursor.next(), false);
       });
     }
@@ -81,14 +83,13 @@ describe('SparqlGraph', () => {
   it('decodes URI, blank nodes, escaped literals, language and datatype with async iteration', async () => {
     const f = fixture();
     const terms = [
-      [uri('urn:o'), 'urn:o'],
-      [{ type: 'bnode', value: 'b1' }, '_:b1'],
-      [literal('"\\\n\r\t\b\f\u0000\u001f\u007f\u0085'), '"\\"\\\\\\n\\r\\t\\u0008\\u000C\\u0000\\u001F\\u007F\\u0085"'],
-      [{ ...literal('bonjour'), 'xml:lang': 'fr-CA' }, '"bonjour"@fr-ca'],
-      [{ ...literal('1'), datatype: 'urn:type' }, '"1"^^<urn:type>'],
-      [{ type: 'typed-literal', value: '2', datatype: 'urn:type' }, '"2"^^<urn:type>'],
-      [{ ...literal('hi'), 'xml:lang': 'en', datatype: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString' }, '"hi"@en'],
-      [literal('雪'), '"雪"']
+      [uri('urn:o'), n('urn:o')],
+      [literal('"\\\n\r\t\b\f\u0000\u001f\u007f\u0085'), l('"\\\n\r\t\b\f\u0000\u001f\u007f\u0085')],
+      [{ ...literal('bonjour'), 'xml:lang': 'fr-CA' }, l('bonjour', 'fr-ca')],
+      [{ ...literal('1'), datatype: 'urn:type' }, l('1', '', 'urn:type')],
+      [{ type: 'typed-literal', value: '2', datatype: 'urn:type' }, l('2', '', 'urn:type')],
+      [{ ...literal('hi'), 'xml:lang': 'en', datatype: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString' }, l('hi', 'en')],
+      [literal('雪'), l('雪')]
     ];
     f.respond(results(...terms.map(([o]) => ({ s: uri('urn:s'), p: uri('urn:p'), o }))));
     const cursor = await f.graph.find();
@@ -100,13 +101,89 @@ describe('SparqlGraph', () => {
     assert.throws(() => cursor.getTriple(), /Cursor is closed/);
   });
 
+  it('scopes blank labels across all positions and rows of one response only', async () => {
+    const f = fixture(n('urn:g'));
+    const blank = value => ({ type: 'bnode', value });
+    f.respond(results(
+      { s: blank('a'), p: uri('urn:p'), o: blank('a') },
+      { s: blank('a'), p: uri('urn:p'), o: blank('b') }));
+    const first = (await f.graph.find()).getTriples();
+    const second = (await f.graph.find()).getTriples();
+    assert.ok(first[0].subject.equals(first[0].object));
+    assert.ok(first[0].subject.equals(first[1].subject));
+    assert.ok(!first[1].subject.equals(first[1].object));
+    assert.ok(!first[0].subject.equals(second[0].subject));
+    assert.ok(second[0].subject.equals(second[1].subject));
+    for (const row of [...first, ...second]) {
+      assert.equal(row.termType, 'Quad');
+      assert.ok(row.graph.equals(n('urn:g')));
+      assert.ok(Object.isFrozen(row.subject));
+    }
+  });
+
+  it('rejects blank identity patterns before transport but supports safely mapped insert labels', async () => {
+    const f = fixture();
+    const blank = b('injection } ; DROP ALL; #');
+    for (const method of ['find', 'has', 'count', 'remove']) {
+      for (const pattern of [[blank, null, null], [null, null, blank], [n('urn:s'), n('urn:p'), blank]]) {
+        await assert.rejects(f.graph[method](...pattern), /Blank-node identity/);
+      }
+    }
+    assert.deepEqual(f.calls, []);
+    await f.graph.add(blank, n('urn:p'), blank);
+    assert.deepEqual(f.calls, [['update', 'INSERT DATA {\n  _:b0 <urn:p> _:b0 .\n}']]);
+  });
+
+  it('validates every returned position, including bindings supplied for bound positions', async () => {
+    const f = fixture();
+    const valid = { s: uri('urn:s'), p: uri('urn:p'), o: literal('x') };
+    for (const row of [
+      { ...valid, s: literal('subject') },
+      { ...valid, p: { type: 'bnode', value: 'p' } },
+      { ...valid, s: uri('relative') },
+      { ...valid, o: uri('urn:injection> }') },
+      { ...valid, o: { type: 'bnode', value: '' } },
+      { ...valid, o: { type: 'bnode', value: '\ud800' } },
+      { ...valid, o: { ...literal('x'), datatype: 'relative' } },
+      { ...valid, o: { ...literal('x'), 'xml:lang': 'en', datatype: 'urn:not-langString' } },
+      { ...valid, o: { type: 'typed-literal', value: 'x', datatype: 'urn:type', 'xml:lang': 'en' } },
+      { ...valid, o: { ...literal('x'), datatype: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString' } },
+      { ...valid, o: { ...uri('urn:o'), 'xml:lang': 'en' } }
+    ]) {
+      f.respond(results(row));
+      await assert.rejects(f.graph.find(), { message: 'SPARQL SELECT: invalid result' });
+      await assert.rejects(f.graph.find(n('urn:s'), n('urn:p'), l('x')), { message: 'SPARQL SELECT: invalid result' });
+    }
+    for (const row of [{ ...valid, s: uri('urn:wrong') }, { ...valid, o: literal('other') }, { ...valid, p: null }]) {
+      f.respond(results(row));
+      await assert.rejects(f.graph.find(n('urn:s'), n('urn:p'), l('x')), /SELECT: invalid result/);
+    }
+    f.respond(results(valid));
+    assert.deepEqual((await f.graph.find(n('urn:s'), n('urn:p'), l('x'))).getTriples(), [q(n('urn:s'), n('urn:p'), l('x'))]);
+    for (const vars of [null, {}, ['s', 'p'], ['s', 'p', 'o', 'extra'], ['s', 'p', 'p'], [1, 'p', 'o']]) {
+      f.respond({ head: { vars }, results: { bindings: [] } });
+      await assert.rejects(f.graph.find(), /SELECT: invalid result/);
+    }
+  });
+
+  it('rejects plain, wrong-datatype and language COUNT literals, even with integer lexical text', async () => {
+    const f = fixture();
+    for (const count of [literal('1'), { ...literal('1'), datatype: 'urn:number' },
+      { ...literal('1'), 'xml:lang': 'en' }, { ...integer('1'), 'xml:lang': 'en' }]) {
+      f.respond(counts({ count }));
+      await assert.rejects(f.graph.count(), /COUNT: invalid result/);
+    }
+    f.respond(counts({ count: { ...integer('01'), type: 'typed-literal' } }));
+    assert.equal(await f.graph.count(), 1);
+  });
+
   it('clears an absent or already emptied named graph without CLEAR GRAPH errors', async () => {
-    const f = fixture('urn:clear:missing');
+    const f = fixture(n('urn:clear:missing'));
     let updates = 0;
     // Model a store that discards empty graphs and rejects CLEAR on absence.
     f.client._update = async query => {
       if (query.startsWith('CLEAR GRAPH')) throw new Error('No such graph');
-      assert.equal(query, B.buildDelete('urn:clear:missing', null, null, null));
+      assert.equal(query, B.buildDelete(n('urn:clear:missing'), null, null, null));
       updates++;
     };
     try {
@@ -117,7 +194,7 @@ describe('SparqlGraph', () => {
   });
 
   it('does not suppress named graph clear update failures', async () => {
-    const f = fixture('urn:clear:failure');
+    const f = fixture(n('urn:clear:failure'));
     const failure = new Error('SPARQL update: HTTP 500 failure');
     f.client._update = async () => { throw failure; };
     try { await assert.rejects(f.graph.clear(), error => error === failure); }
@@ -128,7 +205,7 @@ describe('SparqlGraph', () => {
     const f = fixture();
     assert.equal(await (await f.graph.find()).next(), false);
     f.respond(results({}));
-    const cursor = await f.graph.find('urn:s', 'urn:p', 'urn:o');
+    const cursor = await f.graph.find(n('urn:s'), n('urn:p'), n('urn:o'));
     f.client.close();
     assert.equal(await cursor.next(), true);
   });
@@ -147,7 +224,7 @@ describe('SparqlGraph', () => {
       await assert.rejects(f.graph.find(), { message: 'SPARQL SELECT: invalid result' });
     }
     f.respond(results({ extra: { type: 'triple', value: 'SECRET' } }));
-    await assert.rejects(f.graph.find('urn:s', 'urn:p', 'urn:o'), /SELECT: invalid result/);
+    await assert.rejects(f.graph.find(n('urn:s'), n('urn:p'), n('urn:o')), /SELECT: invalid result/);
   });
 
   it('accepts only strict ASK booleans', async () => {
@@ -156,7 +233,8 @@ describe('SparqlGraph', () => {
       f.respond({ boolean });
       assert.equal(await f.graph.has(), boolean);
     }
-    for (const response of [null, {}, [], { boolean: 0 }, { boolean: 'false' }]) {
+    for (const response of [null, {}, [], { boolean: 0 }, { boolean: 'false' },
+      { boolean: true, head: null }, { boolean: true, results: { bindings: [] } }]) {
       f.respond(response);
       await assert.rejects(f.graph.has(), { message: 'SPARQL ASK: invalid result' });
     }
@@ -165,11 +243,11 @@ describe('SparqlGraph', () => {
   it('accepts nonnegative safe COUNT integers and rejects malformed aggregates', async () => {
     const f = fixture();
     for (const value of ['0', '+1', '42', String(Number.MAX_SAFE_INTEGER)]) {
-      f.respond(results({ count: literal(value) }));
+      f.respond(counts({ count: integer(value) }));
       assert.equal(await f.graph.count(), Number(value));
     }
-    for (const response of [null, {}, results(), results({}), results({ count: literal('1') }, { count: literal('2') }),
-      results({ count: uri('1') }), ...['-1', '1.5', 'NaN', 'Infinity', '', ' ', '1e2', '9007199254740992', 'SECRET'].map(value => results({ count: literal(value) }))]) {
+    for (const response of [null, {}, results(), results({}), counts({ count: integer('1') }, { count: integer('2') }),
+      counts({ count: uri('1') }), ...['-1', '1.5', 'NaN', 'Infinity', '', ' ', '1e2', '9007199254740992', 'SECRET'].map(value => counts({ count: integer(value) }))]) {
       f.respond(response);
       await assert.rejects(f.graph.count(), { message: 'SPARQL COUNT: invalid result' });
     }
@@ -179,9 +257,9 @@ describe('SparqlGraph', () => {
     const f = fixture();
     for (let i = 0; i < 3; i++) {
       for (const value of [null, undefined]) {
-        const terms = ['urn:s', 'urn:p', 'urn:o'];
+        const terms = [n('urn:s'), n('urn:p'), n('urn:o')];
         terms[i] = value;
-        await assert.rejects(f.graph.add(...terms), /requires a bound term/);
+        await assert.rejects(f.graph.add(...terms), /Expected RDF\/JS term/);
       }
     }
     assert.deepEqual(f.calls, []);
@@ -192,7 +270,7 @@ describe('SparqlGraph', () => {
       const f = fixture();
       f[handle].close();
       for (const method of ['find', 'has', 'count', 'add', 'remove', 'clear']) {
-        await assert.rejects(f.graph[method]('urn:s', 'urn:p', 'urn:o'), /closed/);
+        await assert.rejects(f.graph[method](n('urn:s'), n('urn:p'), n('urn:o')), /closed/);
       }
       assert.deepEqual(f.calls, []);
     });
@@ -204,7 +282,7 @@ describe('SparqlGraph', () => {
     f.client._query = async () => { calls++; throw new Error('SPARQL query: timeout failure'); };
     f.client._update = async () => { calls++; throw new Error('SPARQL update: HTTP 503 failure'); };
     for (const method of ['find', 'has', 'count']) await assert.rejects(f.graph[method](), /query: timeout/);
-    for (const method of ['add', 'remove', 'clear']) await assert.rejects(f.graph[method]('urn:s', 'urn:p', 'urn:o'), /update: HTTP 503/);
+    for (const method of ['add', 'remove', 'clear']) await assert.rejects(f.graph[method](n('urn:s'), n('urn:p'), n('urn:o')), /update: HTTP 503/);
     assert.equal(calls, 6);
   });
 });

@@ -1,3 +1,4 @@
+import { n, l, d, q } from './helpers/terms.js';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import * as api from '@alt-javascript/jssgdbc-sparql';
@@ -5,7 +6,7 @@ import * as core from '@alt-javascript/jssgdbc-core';
 
 const { DriverManager, ClientDataSource, SparqlDriver, SparqlClient, SparqlGraph, Cursor } = api;
 const secret = 'PRIVATE_ENDPOINT_DATA';
-const s = 'urn:subject', p = 'urn:predicate', o = '"hello"';
+const s = n('urn:subject'), p = n('urn:predicate'), o = l('hello');
 
 describe('SPARQL public driver HTTP composition', () => {
   let server, sockets, endpoint, url, requests, respond, clients;
@@ -13,7 +14,7 @@ describe('SPARQL public driver HTTP composition', () => {
     requests = [];
     clients = [];
     sockets = new Set();
-    respond = (_req, res) => res.end(JSON.stringify({ results: { bindings: [] } }));
+    respond = (_req, res) => res.end(JSON.stringify({ head: { vars: ['s', 'p', 'o'] }, results: { bindings: [] } }));
     server = http.createServer(async (req, res) => {
       let body = '';
       for await (const chunk of req) body += chunk;
@@ -95,27 +96,27 @@ describe('SPARQL public driver HTTP composition', () => {
     assert.equal(requests.length, 0);
   });
 
-  for (const name of ['', 'urn:graph']) {
+  for (const name of [d(), n('urn:graph')]) {
     it(`composes SELECT/ASK/COUNT and INSERT/DELETE/CLEAR for ${name || 'default graph'}`, async () => {
       const client = await connect();
       const graph = client.getGraph(name);
       assert.ok(graph instanceof SparqlGraph);
       assert.ok(graph instanceof core.Graph);
-      assert.equal(graph.getName(), name);
+      assert.deepEqual(graph.getName(), name);
       assert.equal(client.getGraph(name), graph);
-      assert.equal(client.getGraph(), client.getGraph(''));
-      assert.notEqual(client.getGraph(), client.getGraph('urn:graph'));
-      const wrap = pattern => name ? `GRAPH <urn:graph> {\n    ${pattern}\n  }` : pattern;
-      json({ results: { bindings: [
-        { s: { type: 'uri', value: s }, p: { type: 'uri', value: p }, o: { type: 'literal', value: 'hello' } },
+      assert.equal(client.getGraph(), client.getGraph(d()));
+      assert.notEqual(client.getGraph(), client.getGraph(n('urn:graph')));
+      const wrap = pattern => name.termType === 'NamedNode' ? `GRAPH <urn:graph> {\n    ${pattern}\n  }` : pattern;
+      json({ head: { vars: ['s', 'p', 'o'] }, results: { bindings: [
+        { s: { type: 'uri', value: s.value }, p: { type: 'uri', value: p.value }, o: { type: 'literal', value: 'hello' } },
       ] } });
       const cursor = await graph.find();
       assert.ok(cursor instanceof Cursor);
       query(`SELECT ?s ?p ?o WHERE {\n  ${wrap('?s ?p ?o .')}\n}`);
       const triples = [];
       for await (const triple of cursor) triples.push(triple);
-      assert.deepEqual(triples, [{ subject: s, predicate: p, object: o }]);
-      json({ results: { bindings: [{ o: { type: 'literal', value: 'hello' } }] } });
+      assert.deepEqual(triples, [q(s, p, o, name)]);
+      json({ head: { vars: ['s', 'p', 'o'] }, results: { bindings: [{ o: { type: 'literal', value: 'hello' } }] } });
       const bound = await graph.find(s, p);
       query(`SELECT ?s ?p ?o WHERE {\n  ${wrap('<urn:subject> <urn:predicate> ?o .')}\n}`);
       assert.equal(await bound.next(), true);
@@ -124,7 +125,7 @@ describe('SPARQL public driver HTTP composition', () => {
       json({ boolean: false });
       assert.equal(await graph.has(s, p, o), false);
       query(`ASK {\n  ${wrap('<urn:subject> <urn:predicate> "hello" .')}\n}`);
-      json({ results: { bindings: [{ count: { type: 'literal', value: '0' } }] } });
+      json({ head: { vars: ['count'] }, results: { bindings: [{ count: { type: 'literal', value: '0', datatype: 'http://www.w3.org/2001/XMLSchema#integer' } }] } });
       assert.equal(await graph.count(), 0);
       query(`SELECT (COUNT(*) AS ?count) WHERE {\n  ${wrap('?s ?p ?o .')}\n}`);
       respond = (_req, res) => { res.writeHead(204); res.end(); };
@@ -132,7 +133,7 @@ describe('SPARQL public driver HTTP composition', () => {
         [() => graph.add(s, p, o), `INSERT DATA {\n  ${wrap('<urn:subject> <urn:predicate> "hello" .')}\n}`],
         [() => graph.remove(s, p, o), `DELETE DATA {\n  ${wrap('<urn:subject> <urn:predicate> "hello" .')}\n}`],
         [() => graph.remove(s), `DELETE {\n  ${wrap('<urn:subject> ?p ?o .')}\n}\nWHERE {\n  ${wrap('<urn:subject> ?p ?o .')}\n}`],
-        [() => graph.clear(), name ? `DELETE {\n  ${wrap('?s ?p ?o .')}\n}\nWHERE {\n  ${wrap('?s ?p ?o .')}\n}` : 'CLEAR DEFAULT'],
+        [() => graph.clear(), name.termType === 'NamedNode' ? `DELETE {\n  ${wrap('?s ?p ?o .')}\n}\nWHERE {\n  ${wrap('?s ?p ?o .')}\n}` : 'CLEAR DEFAULT'],
       ];
       for (const [operation, text] of updates) {
         assert.equal(await operation(), undefined);
@@ -149,11 +150,11 @@ describe('SPARQL public driver HTTP composition', () => {
   it('rejects closed graph/parent handles without HTTP while detached Cursor remains usable', async () => {
     const client = await connect();
     const graph = client.getGraph();
-    json({ results: { bindings: [{}] } });
+    json({ head: { vars: ['s', 'p', 'o'] }, results: { bindings: [{}] } });
     const cursor = await graph.find(s, p, o);
     graph.close();
     assert.equal(graph.isClosed(), true);
-    const other = client.getGraph('urn:other');
+    const other = client.getGraph(n('urn:other'));
     client.close();
     assert.equal(client.isClosed(), true);
     assert.throws(() => client.getGraph(), /closed/);
@@ -164,7 +165,7 @@ describe('SPARQL public driver HTTP composition', () => {
     }
     assert.equal(requests.length, 1);
     assert.equal(await cursor.next(), true);
-    assert.deepEqual(cursor.getTriple(), { subject: s, predicate: p, object: o });
+    assert.deepEqual(cursor.getTriple(), q(s, p, o));
     cursor.close();
     await assert.rejects(cursor.next(), /closed/);
   });
@@ -172,15 +173,15 @@ describe('SPARQL public driver HTTP composition', () => {
   for (const operation of ['find', 'add']) {
     it(`redacts end-to-end HTTP failures for ${operation} without retrying`, async () => {
       respond = (_req, res) => { res.writeHead(503); res.end(secret); };
-      const graph = (await connect()).getGraph(`urn:${secret}`);
-      await safeReject(graph[operation](s, p, `"${secret}"`), new RegExp(`${operation === 'find' ? 'query' : 'update'}.*HTTP 503`));
+      const graph = (await connect()).getGraph(n(`urn:${secret}`));
+      await safeReject(graph[operation](s, p, l(secret)), new RegExp(`${operation === 'find' ? 'query' : 'update'}.*HTTP 503`));
       assert.equal(requests.length, 1);
     });
   }
   for (const [operation, result, category] of [
-    ['find', { results: { bindings: [{ s: { type: 'unknown', value: secret } }] } }, 'SELECT'],
+    ['find', { head: { vars: ['s', 'p', 'o'] }, results: { bindings: [{ s: { type: 'unknown', value: secret } }] } }, 'SELECT'],
     ['has', { boolean: secret }, 'ASK'],
-    ['count', { results: { bindings: [{ count: { type: 'literal', value: secret } }] } }, 'COUNT'],
+    ['count', { head: { vars: ['s', 'p', 'o'] }, results: { bindings: [{ count: { type: 'literal', value: secret } }] } }, 'COUNT'],
   ]) {
     it(`redacts malformed ${category} results through public graph`, async () => {
       json(result);

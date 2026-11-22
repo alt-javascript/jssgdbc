@@ -1,8 +1,9 @@
+import { n, d, q } from './helpers/terms.js';
 import assert from 'node:assert/strict';
 import { SparqlClient } from '../SparqlClient.js';
 import { startMockSparqlEndpoint } from './helpers/mock-sparql-endpoint.js';
 
-const triple = ['urn:s', 'urn:p', 'urn:o'];
+const triple = [n('urn:s'), n('urn:p'), n('urn:o')];
 const methods = ['add', 'remove', 'find', 'has', 'count', 'clear'];
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 async function rejected(graph) {
@@ -14,7 +15,7 @@ describe('SPARQL lifecycle', () => {
     const endpoint = await startMockSparqlEndpoint();
     const client = new SparqlClient(null, `jssgdbc:sparql:${endpoint.endpoint}`);
     try {
-      for (const name of ['', 'urn:named']) {
+      for (const name of [d(), n('urn:named')]) {
         const old = client.getGraph(name);
         await old.add(...triple);
         const cursor = await old.find();
@@ -27,10 +28,10 @@ describe('SPARQL lifecycle', () => {
         assert.equal(await fresh.has(...triple), true);
         await fresh.close();
         assert.equal(await cursor.next(), true);
-        assert.deepEqual(cursor.getTriple(), { subject: triple[0], predicate: triple[1], object: triple[2] });
+        assert.deepEqual(cursor.getTriple(), q(...triple, name));
         cursor.close();
       }
-      const owned = [client.getGraph(), client.getGraph('urn:named')];
+      const owned = [client.getGraph(), client.getGraph(n('urn:named'))];
       const closing = client.close();
       assert.equal(closing, client.close());
       await closing;
@@ -84,7 +85,7 @@ describe('SPARQL lifecycle', () => {
   it('attempts all owned graph cleanups and repeats the original failure', async () => {
     const client = new SparqlClient(null, 'jssgdbc:sparql:http://localhost/sparql');
     let attempts = 0;
-    for (const name of ['', 'urn:named']) client.getGraph(name)._close = () => { attempts++; throw new Error('cleanup'); };
+    for (const name of [d(), n('urn:named')]) client.getGraph(name)._close = () => { attempts++; throw new Error('cleanup'); };
     const closing = client.close();
     let original;
     await assert.rejects(closing, error => { original = error; assert.equal(error.errors.length, 2); return true; });

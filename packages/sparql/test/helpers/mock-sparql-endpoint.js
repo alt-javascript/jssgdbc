@@ -1,14 +1,16 @@
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { n, b, l } from './terms.js';
+import { termKey } from '@alt-javascript/jssgdbc-core';
 
 // Deliberately NOT a SPARQL engine: one triple, positional ?s/?p/?o,
 // optional GRAPH, and the exact SELECT/ASK/COUNT/DATA/CLEAR forms below.
-// Relative-looking IRIs (e.g. <subject1>) are opaque contract-test terms,
-// not an assertion about a vendor's base-IRI resolution. No prefixes,
-// joins, filters, blank nodes or numeric shorthand. Wildcard DELETE supports
+// No prefixes, joins, filters or numeric shorthand. Request-local blank
+// labels are supported for INSERT only. Wildcard DELETE supports
 // only identical single-pattern DELETE/WHERE templates (not general updates).
 const iri = '<[^<>\\s]+>';
 const literal = '"(?:[^"\\\\\\r\\n]|\\\\(?:["\\\\nrtbf]|u[0-9a-fA-F]{4}))*"(?:@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*|\\^\\^' + iri + ')?';
-const triple = new RegExp(`^(${iri}|\\?s)\\s+(${iri}|\\?p)\\s+(${iri}|${literal}|\\?o)\\s+\\.$`);
+const triple = new RegExp(`^(${iri}|_:[a-zA-Z0-9]+|\\?s)\\s+(${iri}|\\?p)\\s+(${iri}|${literal}|_:[a-zA-Z0-9]+|\\?o)\\s+\\.$`);
 const unsupported = () => { throw new Error('Unsupported fixture request'); };
 
 function parse(text) {
@@ -33,15 +35,23 @@ function parse(text) {
   return { operation, graph, terms };
 }
 
-function binding(term) {
-  if (term.startsWith('<')) return { type: 'uri', value: term.slice(1, -1) };
+function parseTerm(term, scope) {
+  if (term.startsWith('?')) return term;
+  if (term.startsWith('<')) return n(term.slice(1, -1));
+  if (term.startsWith('_:')) return b(`${scope}_${term.slice(2)}`);
   const match = term.match(/^("(?:[^"\\]|\\.)*")(@[^\s]+|\^\^<[^>]+>)?$/);
   if (!match) return unsupported();
-  const result = { type: 'literal', value: JSON.parse(match[1]) };
-  if (match[2]?.startsWith('@')) result['xml:lang'] = match[2].slice(1);
-  if (match[2]?.startsWith('^^')) result.datatype = match[2].slice(3, -1);
-  return result;
+  return l(JSON.parse(match[1]), match[2]?.startsWith('@') ? match[2].slice(1).toLowerCase() : '',
+    match[2]?.startsWith('^^') ? match[2].slice(3, -1) : undefined);
 }
+function binding(term) {
+  if (term.termType === 'NamedNode') return { type: 'uri', value: term.value };
+  if (term.termType === 'BlankNode') return { type: 'bnode', value: term.value };
+  return { type: 'literal', value: term.value, ...(term.language
+    ? { 'xml:lang': term.language } : { datatype: term.datatype.value }) };
+}
+const variable = term => typeof term === 'string' && term.startsWith('?');
+const rowKey = terms => JSON.stringify(terms.map(termKey));
 
 export async function startMockSparqlEndpoint() {
   const graphs = new Map(), requests = [], sockets = new Set();
@@ -62,19 +72,21 @@ export async function startMockSparqlEndpoint() {
         for await (const chunk of req) text += chunk;
       } else return unsupported();
       const parsed = parse(text.trim());
-      const { operation, graph, terms } = parsed;
+      const { operation, graph } = parsed;
+      const scope = randomUUID();
+      const terms = parsed.terms?.map(term => parseTerm(term, scope));
       const query = ['SELECT', 'COUNT', 'ASK'].includes(operation);
       if ((req.method === 'GET') !== query) return unsupported();
       Object.assign(record, { operation, graph });
       const data = graphs.get(graph) ?? new Map();
       graphs.set(graph, data);
-      const rows = terms ? [...data.values()].filter(row => terms.every((term, i) => term.startsWith('?') || term === row[i])) : [];
+      const rows = terms ? [...data.values()].filter(row => terms.every((term, i) => variable(term) || term.equals(row[i]))) : [];
       if (!query) {
         if (operation === 'CLEAR') data.clear();
-        else if (operation === 'INSERT DATA') data.set(JSON.stringify(terms), terms);
+        else if (operation === 'INSERT DATA') data.set(rowKey(terms), terms);
         else if (operation === 'DELETE PATTERN') {
-          for (const row of rows) data.delete(JSON.stringify(row));
-        } else data.delete(JSON.stringify(terms));
+          for (const row of rows) data.delete(rowKey(row));
+        } else data.delete(rowKey(terms));
         res.writeHead(204).end();
         return;
       }
@@ -83,7 +95,7 @@ export async function startMockSparqlEndpoint() {
           { count: { type: 'literal', datatype: 'http://www.w3.org/2001/XMLSchema#integer', value: String(rows.length) } }
         ] } }
           : { head: { vars: ['s', 'p', 'o'] }, results: { bindings: rows.map(row =>
-            Object.fromEntries(terms.flatMap((term, i) => term.startsWith('?') ? [[term.slice(1), binding(row[i])]] : []))) } };
+            Object.fromEntries(terms.flatMap((term, i) => variable(term) ? [[term.slice(1), binding(row[i])]] : []))) } };
       res.writeHead(200, { 'Content-Type': 'application/sparql-results+json' }).end(JSON.stringify(result));
     } catch {
       res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Unsupported fixture request');

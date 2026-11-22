@@ -34,8 +34,9 @@ export async function readExample(endpoint, headers = { 'X-Example': 'readme' })
   let graph, cursor;
   try {
     graph = client.getGraph();
-    cursor = await graph.find('http://dbpedia.org/resource/Berlin',
-      'http://www.w3.org/2000/01/rdf-schema#label', null);
+    cursor = await graph.find(
+      { termType: 'NamedNode', value: 'http://dbpedia.org/resource/Berlin' },
+      { termType: 'NamedNode', value: 'http://www.w3.org/2000/01/rdf-schema#label' }, null);
     const rows = [];
     while (await cursor.next()) rows.push(cursor.getTriple());
     return rows;
@@ -87,10 +88,12 @@ export async function writeExample(endpoint, {
   let graph, named, cursor;
   try {
     graph = client.getGraph();
-    named = client.getGraph('https://example.org/graphs/demo');
-    const subject = 'https://example.org/items/demo';
-    const predicate = 'http://www.w3.org/2000/01/rdf-schema#label';
-    const object = '"Demo"@en';
+    const iri = value => ({ termType: 'NamedNode', value });
+    named = client.getGraph(iri('https://example.org/graphs/demo'));
+    const subject = iri('https://example.org/items/demo');
+    const predicate = iri('http://www.w3.org/2000/01/rdf-schema#label');
+    const object = { termType: 'Literal', value: 'Demo', language: 'en',
+      datatype: iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#langString') };
     await graph.add(subject, predicate, object);
     await named.add(subject, predicate, object);
     cursor = await named.find(subject, predicate, null);
@@ -119,25 +122,25 @@ Closing handles is not rollback. If a step fails, previous writes can remain.
 
 ## Terms, graphs and handles
 
-- Follow the [core string contract](../core/README.md#string-terms): IRIs must
-  be absolute, optionally bracketed. Literal objects require double-quoted RDF
-  syntax, e.g. `'"Hello"'`, `'"Bonjour"@fr'`, or
-  `'"001"^^<http://www.w3.org/2001/XMLSchema#integer>'`. Literal quotes and typed
-  lexical values remain intact; equivalent escapes canonicalize, language tags
-  lowercase and xsd:string becomes plain quoted syntax. Invalid terms/positions
-  reject before HTTP I/O; graph names remain a separate trusted input boundary.
-- Blank labels are dataset-scoped, not stable identifiers across requests.
-  In query patterns they are existential variables; DELETE DATA cannot portably
-  address blank nodes by label. Use IRIs for portable remote lookup/removal.
+- Use structural RDF/JS terms from any independent factory, not strings or
+  quoted RDF syntax. NamedNode IRIs must be absolute. Literal `value` is its
+  exact lexical text, with `language` and a NamedNode `datatype`; numeric
+  lexical forms such as `01` and `1` remain distinct. Language tags lowercase.
+  Invalid terms, graph names and positions reject before HTTP I/O.
+- Blank insert labels are safely mapped once per update request. Result blanks
+  share identity within one response only; a later response gets a fresh scope.
+  Blank-node identity patterns in find/has/count/remove explicitly reject
+  because SPARQL labels are existential, not persistent IDs. No wildcard
+  substitution is performed. Use IRIs for portable remote lookup/removal.
 - `null` or omitted arguments are wildcards for find/has/count/remove.
   `add` requires all three terms. Wildcard remove generates DELETE/WHERE;
   fully bound remove generates DELETE DATA.
-- `getGraph()` (or `getGraph('')`) addresses the default graph;
-  `getGraph(absoluteGraphIri)` scopes operations to that named graph. Clear
+- `getGraph()` (or an RDF/JS DefaultGraph) addresses the default graph;
+  `getGraph(namedNode)` scopes operations to that named graph. Clear
   affects only the selected graph, not all graphs. Endpoint dataset policies
   can determine what a default query sees.
-- URI results are bare strings; literal results retain quoted RDF syntax;
-  blank-node results use `_:id`. A Cursor is **fully buffered**, not streaming.
+- Results are structural RDF/JS quads, including their graph term; no lexical
+  string compatibility path exists. A Cursor is **fully buffered**, not streaming.
   Iterate with `next()`/`getTriple()` or `for await`. Close cursors, graphs and
   clients in `finally`; closing a client prevents later graph operations but
   does not cancel already-running requests or close independent cursors.

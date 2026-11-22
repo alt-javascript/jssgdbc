@@ -1,123 +1,55 @@
-import { normalizeTerm } from '@alt-javascript/jssgdbc-core/internal/string-term';
+import { snapshotTerm, termKey, defaultGraph, UnsupportedRdfFeatureError, XSD_STRING } from '@alt-javascript/jssgdbc-core';
 
+/** Buffered RDF/JS codec. A blank map belongs to exactly one update request. */
 export class SparqlBuilder {
-  static buildSelect(graphName, subject, predicate, object) {
-    const pattern = this.buildTriplePattern(graphName, subject, predicate, object);
-    if (graphName && graphName !== '') {
-      return `SELECT ?s ?p ?o WHERE {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${pattern}\n  }\n}`;
-    }
-    return `SELECT ?s ?p ?o WHERE {\n  ${pattern}\n}`;
+  static wrap(graph, pattern) {
+    const name = snapshotTerm(graph === undefined ? defaultGraph() : graph, 'graph');
+    return name.termType === 'DefaultGraph' ? pattern : `GRAPH ${this.escapeIri(name)} {\n    ${pattern}\n  }`;
   }
 
-  static buildAsk(graphName, subject, predicate, object) {
-    const s = this.formatTerm(subject, 'subject');
-    const p = this.formatTerm(predicate, 'predicate');
-    const o = this.formatTerm(object, 'object');
-
-    if (graphName && graphName !== '') {
-      return `ASK {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${s} ${p} ${o} .\n  }\n}`;
-    }
-    return `ASK {\n  ${s} ${p} ${o} .\n}`;
+  static buildSelect(graph, s, p, o) {
+    return `SELECT ?s ?p ?o WHERE {\n  ${this.wrap(graph, this.buildTriplePattern(graph, s, p, o))}\n}`;
   }
-
-  static buildCount(graphName, subject, predicate, object) {
-    const pattern = this.buildTriplePattern(graphName, subject, predicate, object);
-    if (graphName && graphName !== '') {
-      return `SELECT (COUNT(*) AS ?count) WHERE {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${pattern}\n  }\n}`;
-    }
-    return `SELECT (COUNT(*) AS ?count) WHERE {\n  ${pattern}\n}`;
+  static buildAsk(graph, s, p, o) {
+    return `ASK {\n  ${this.wrap(graph, this.buildTriplePattern(graph, s, p, o))}\n}`;
   }
-
-  static buildInsertData(graphName, subject, predicate, object) {
-    if ([subject, predicate, object].some((term) => term === null || term === undefined)) {
-      throw new TypeError('INSERT DATA requires bound subject, predicate, and object');
-    }
-
-    const s = this.formatTerm(subject, 'subject');
-    const p = this.formatTerm(predicate, 'predicate');
-    const o = this.formatTerm(object, 'object');
-
-    if (graphName && graphName !== '') {
-      return `INSERT DATA {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${s} ${p} ${o} .\n  }\n}`;
-    }
-    return `INSERT DATA {\n  ${s} ${p} ${o} .\n}`;
+  static buildCount(graph, s, p, o) {
+    return `SELECT (COUNT(*) AS ?count) WHERE {\n  ${this.wrap(graph, this.buildTriplePattern(graph, s, p, o))}\n}`;
   }
-
-  static buildDelete(graphName, subject, predicate, object) {
-    const hasWildcard = subject === null || subject === undefined ||
-                       predicate === null || predicate === undefined ||
-                       object === null || object === undefined;
-
-    if (!hasWildcard) {
-      // All terms bound: DELETE DATA
-      const s = this.formatTerm(subject, 'subject');
-      const p = this.formatTerm(predicate, 'predicate');
-      const o = this.formatTerm(object, 'object');
-
-      if (graphName && graphName !== '') {
-        return `DELETE DATA {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${s} ${p} ${o} .\n  }\n}`;
-      }
-      return `DELETE DATA {\n  ${s} ${p} ${o} .\n}`;
-    }
-
-    // Has wildcard: DELETE/WHERE
-    const pattern = this.buildTriplePattern(graphName, subject, predicate, object);
-    if (graphName && graphName !== '') {
-      return `DELETE {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${pattern}\n  }\n}\nWHERE {\n  GRAPH ${this.escapeIri(graphName)} {\n    ${pattern}\n  }\n}`;
-    }
-    return `DELETE {\n  ${pattern}\n}\nWHERE {\n  ${pattern}\n}`;
+  static buildInsertData(graph, s, p, o) {
+    if ([s, p, o].some(t => t == null)) throw new TypeError('INSERT DATA requires bound subject, predicate, and object');
+    const blanks = new Map();
+    const pattern = [s, p, o].map((t, i) => this.formatTerm(t, ['subject', 'predicate', 'object'][i], blanks)).join(' ') + ' .';
+    return `INSERT DATA {\n  ${this.wrap(graph, pattern)}\n}`;
   }
-
-  static buildClear(graphName) {
-    if (!graphName || graphName === '') {
-      return 'CLEAR DEFAULT';
-    }
-    // Stores may discard empty named graphs. CLEAR GRAPH then fails for an
-    // absent graph (e.g. Fuseki), but Graph.clear() must be an idempotent no-op.
-    // A scoped DELETE matches nothing when absent without SILENT hiding errors.
-    return this.buildDelete(graphName, null, null, null);
+  static buildDelete(graph, s, p, o) {
+    const body = this.wrap(graph, this.buildTriplePattern(graph, s, p, o));
+    return [s, p, o].some(t => t == null)
+      ? `DELETE {\n  ${body}\n}\nWHERE {\n  ${body}\n}` : `DELETE DATA {\n  ${body}\n}`;
   }
-
-  static formatTerm(value, position) {
-    if (value === null || value === undefined) {
-      // Convert position to variable name
-      switch (position) {
-        case 'subject':
-          return '?s';
-        case 'predicate':
-          return '?p';
-        case 'object':
-          return '?o';
-        default:
-          return '?x';
-      }
-    }
-
-    const term = normalizeTerm(value, position);
-    return term.startsWith('_:') || term.startsWith('"') ? term : `<${term}>`;
+  static buildClear(graph) {
+    const name = snapshotTerm(graph === undefined ? defaultGraph() : graph, 'graph');
+    return name.termType === 'DefaultGraph' ? 'CLEAR DEFAULT' : this.buildDelete(name, null, null, null);
   }
-
-  static escapeIri(iri) {
-    if (iri.startsWith('<') && iri.endsWith('>')) {
-      return iri;
-    }
-
-    // Characters disallowed in SPARQL IRI references: space, <, >, {, }, |, ^, backtick, \
-    const disallowedChars = /[ <>{}\|^\`\\]/g;
-
-    const escaped = iri.replace(disallowedChars, (char) => {
-      const code = char.charCodeAt(0);
-      return `%${code.toString(16).toUpperCase().padStart(2, '0')}`;
-    });
-
-    return `<${escaped}>`;
+  static buildTriplePattern(graph, s, p, o) {
+    snapshotTerm(graph === undefined ? defaultGraph() : graph, 'graph');
+    return [s, p, o].map((t, i) => this.formatTerm(t, ['subject', 'predicate', 'object'][i])).join(' ') + ' .';
   }
-
-  static buildTriplePattern(graphName, subject, predicate, object) {
-    const s = this.formatTerm(subject, 'subject');
-    const p = this.formatTerm(predicate, 'predicate');
-    const o = this.formatTerm(object, 'object');
-
-    return `${s} ${p} ${o} .`;
+  static formatTerm(value, position, blanks) {
+    const t = snapshotTerm(value, position, true);
+    if (t === null) return { subject: '?s', predicate: '?p', object: '?o' }[position];
+    if (t.termType === 'NamedNode') return this.escapeIri(t);
+    if (t.termType === 'BlankNode') {
+      if (!blanks) throw new UnsupportedRdfFeatureError('Blank-node identity patterns are unavailable in SPARQL', { feature: 'blankNodeIdentity', position });
+      const key = termKey(t);
+      if (!blanks.has(key)) blanks.set(key, `b${blanks.size}`);
+      return `_:${blanks.get(key)}`;
+    }
+    const lexical = '"' + t.value.replace(/["\\\x00-\x1f\x7f-\x9f]/g, c => ({ '"': '\\"', '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t' }[c] ?? `\\u${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`)) + '"';
+    return lexical + (t.language ? `@${t.language}` : t.datatype.value === XSD_STRING ? '' : `^^${this.escapeIri(t.datatype)}`);
+  }
+  static escapeIri(term) {
+    // Reject illegal IRIs instead of percent-encoding them into different RDF terms.
+    return `<${snapshotTerm(term, 'predicate').value}>`;
   }
 }
