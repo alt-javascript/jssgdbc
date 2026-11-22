@@ -4,6 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { Client } from '../Client.js';
 import { Graph } from '../Graph.js';
 
+// Explicit typed opt-in seams. Legacy string tests below are not typed evidence.
+export { datasetCompliance } from './datasetCompliance.js';
+export { typedGraphComplianceTests } from './typedCompliance.js';
+
 /**
  * Shared compliance test generator for jssgdbc drivers.
  *

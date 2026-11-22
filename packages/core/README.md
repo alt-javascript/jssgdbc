@@ -45,29 +45,41 @@ try {
 assert.throws(() => client.getGraph(), /closed/i);
 ```
 
-## String terms
+## Typed terms and explicit Datasets
 
-Use absolute IRI strings (`urn:s`, `https://example.org/s`) or bracketed
-N-Triples IRIs (`<urn:s>`). Results return unbracketed IRIs. Literal objects
-must be double-quoted N-Triples strings, e.g. `'"text"'`, `'"hello"@en'`, or
-`'"001"^^<http://www.w3.org/2001/XMLSchema#integer>'`. Never pass bare text
-as a literal. `urn:o` and `"urn:o"` remain distinct RDF terms.
+Core and memory accept structural RDF/JS terms, not strings. Use maintained
+Node.js 22+. Subject: NamedNode/BlankNode; predicate: NamedNode; object:
+NamedNode/BlankNode/Literal. `getGraph()` selects DefaultGraph;
+`getGraph(graphTerm)` accepts NamedNode or DefaultGraph (not null/string).
+Equal external terms select the same open handle. Literal lexical values,
+lowercase language and datatype identity are preserved, without numeric coercion.
+Variables, nested quads, directional literals and blank graph names raise
+`UnsupportedRdfFeatureError` with `feature` and `position`; malformed terms raise
+TypeError before I/O. See [full typed profile](test/TYPED-TERMS.md).
 
-Subjects allow IRIs or `_:label` blank nodes; predicates require IRIs; objects
-also allow literals. Malformed terms and invalid positions reject with a
-position-bearing TypeError before adapter I/O. Add requires three bound terms;
-null/undefined are wildcards only in find/has/count/remove patterns.
+`add(s,p,o)` requires bound terms. `find/remove/has/count(s?,p?,o?)` accept only
+null/undefined wildcards. Memory `find` returns a buffered Cursor whose
+`getTriple/getTriples` and async iterator yield immutable RDF/JS Quads, including
+`graph`, not string triples. Duplicate quads are no-ops. `clear()` is graph-local.
 
-Results canonicalize equivalent escapes, language tags to lowercase, and
-xsd:string literals to plain quoted literals. Typed lexical content (including
-leading zeroes) is never coerced to JavaScript numbers or booleans. This is a
-string API, not a public RDF/JS term-object API. Use maintained Node.js 22+.
+- `await client.loadDataset({graphs, factory})` returns `factory.dataset(quads)`.
+- `await client.saveDataset(dataset, {graphs, mode = 'merge'})` accepts a synchronous
+  quad iterable. Both require a nonempty graph-term array; duplicates collapse.
+- Save snapshots and validates the entire input before writes, rejecting quads
+  outside the selection. Replace clears even empty selected graphs, never others.
+- Loaded Datasets are local: edits never persist implicitly. Each save scopes blanks
+  freshly across selected graphs. Compare by isomorphism; blank merges are NOT
+  idempotent and replacement cannot preserve links to unselected graphs.
+- Success returns frozen `{graph, status: 'committed'}` records. Execution errors
+  are `DatasetSaveError` with original `cause` and ordered `outcomes`: committed,
+  unknown (invoked, may have written), or not-attempted. Preflight errors propagate
+  directly. No automatic retries, rollback or cross-graph transaction guarantee.
 
-Blank labels are scoped to a graph/dataset, not global identifiers. Local file
-round trips preserve labels, but separate imports and remote requests do not
-promise stable labels or portable blank-node lookup/removal. In SPARQL a blank
-label in a query pattern is existential, not a persistent node identifier.
-Use IRIs when identity must survive independent remote operations.
+`getCapabilities()` returns recursively frozen `{version: 1, features}`;
+each feature has `status` supported/configured/unavailable/unknown and optional
+`detail`. Unknown is not support. Memory is volatile, buffered and nontransactional.
+See [persistence signatures, hooks, failure and load contract](test/DATASET-PERSISTENCE.md).
+Core/memory have no external runtime dependencies; callers supply a Dataset factory.
 
 ## Resource lifecycle
 
@@ -94,7 +106,17 @@ or cancellation guarantee.
 
 ## Compliance Testing
 
-API fragment (requires your `MyDriver` implementation and a Mocha context):
+**Migration boundary:** file, SPARQL and Neo4j still need typed terms, graph
+identity, Dataset hooks and capabilities migration. Their legacy tests are not
+typed conformance evidence; no failures are skipped or reclassified here.
+Run `npm run test:dataset-memory` for the independent-factory memory workflow.
+`datasetCompliance(client, independentDataFactory, independentDatasetFactory,
+fullDatasetFactory)` is an async destructive fixture exported from
+`test/driverCompliance.js`; supply fresh disposable storage. It closes the client.
+`typedGraphComplianceTests(name, clientFactory)` is the typed Graph Mocha seam.
+
+The following **legacy string-only** API fragment is retained for migration
+(requires your `MyDriver` implementation and a Mocha context):
 implement the `Driver` interface and validate it against the compliance harness:
 
 ```javascript

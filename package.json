@@ -9,6 +9,8 @@
     "packages/*"
   ],
   "scripts": {
+    "test:memory-contract": "npm run test:packaging && npm test --workspace=packages/core --workspace=packages/memory --workspace=packages/dataset && npm run test:dataset-memory && node --input-type=module -e \"const {runExample} = await import('./scripts/readme-examples.js'); await runExample('packages/core/README.md', 'core-quickstart'); await runExample('packages/memory/README.md', 'memory-quickstart');\"",
+    "test:dataset-memory": "node test/verify-dataset-memory.js",
     "test:conformance": "node scripts/run-conformance.js",
     "test:packaging": "node --test scripts/package-safeguards.test.js",
     "test:docs": "node --test scripts/readme-examples.test.js",

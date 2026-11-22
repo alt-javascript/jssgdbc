@@ -11,7 +11,22 @@ const edited = local.map(q => rdf.quad(q.subject, q.predicate, rdf.literal('edit
 console.log(edited.toCanonical()) // synchronous canonical N-Quads
 ```
 
-Exports: default/named `factory` implements DataFactory and DatasetFactory; named `dataset(quads?)` and `Dataset`. All Dataset-producing methods return this package's full Dataset, not DatasetCore. The independent N3 `DataFactory` and `Store` are exercised as inputs. Local edits have no persistence effects. Memory persistence integration is a separate task.
+## Explicit memory persistence
+
+Run `npm run test:dataset-memory` for an executable independent-factory workflow.
+`await client.loadDataset({graphs, factory})` constructs this full Dataset;
+local `add`, `delete`, `map` and other edits never write storage.
+Persist explicitly with `await client.saveDataset(local, {graphs, mode: 'replace'})`.
+Both calls require a nonempty NamedNode/DefaultGraph selection. Replace clears
+empty selected graphs; merge is the default and freshly scopes blank nodes on
+each save, so blank merges are not idempotent. Use `equals` for round-trip
+isomorphism, not label equality. See the [core persistence contract](../core/test/DATASET-PERSISTENCE.md)
+for preflight validation, per-graph DatasetSaveError outcomes and lack of atomicity.
+Memory's RDF 1.1 profile is narrower than a general Dataset: unsupported graph
+kinds and embedded quads are rejected before writes. Remote adapters remain
+unmigrated and are not certified by this workflow.
+
+Exports: default/named `factory` implements DataFactory and DatasetFactory; named `dataset(quads?)` and `Dataset`. All Dataset-producing methods return this package's full Dataset, not DatasetCore. The independent N3 `DataFactory` and `Store` are exercised as inputs. Local edits have no persistence effects. The executable memory contract above verifies explicit persistence integration.
 
 ## Pinned contract and supported profile
 
