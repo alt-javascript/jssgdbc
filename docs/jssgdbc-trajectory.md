@@ -3,13 +3,26 @@
 Date: 21 November 2026. Inspected implementation baseline: `84d5f2e`.
 Status: historical research and proposed roadmap, with a current implementation update below. The original scan and proposed milestone breakdown are preserved as history, not authoritative execution state.
 
-## Current experimental baseline (M005 implementation)
+## Current experimental baseline (M006 implementation)
 
-The original scan below describes `84d5f2e`, not the current checkout. M005 implementation now provides a validated, lossless **string-term API**, strict N-Triples parsing/serialization, keyed file graph identities and awaited idempotent graph/client closure. Open clients reacquire fresh graph handles; closed clients remain terminal. Plain/xsd:string equivalence, lowercase language tags and typed lexical preservation are tested. This is not an RDF/JS term-object migration.
+The original scan below describes `84d5f2e`, not the current checkout. M006 replaces
+the M005 string API with structural RDF/JS terms across memory, file, SPARQL and
+Neo4j, explicit selected Dataset load/save, and immutable version-1 capabilities.
+The optional full synchronous Dataset factory provides detached local editing;
+persistence requires an explicit async save. Awaited lifecycle and lexical identity
+remain part of the contract. Final integrated acceptance must be established by
+current-source verification, not inferred from this status update.
 
-Use [STRING-TERMS.md](../packages/core/test/STRING-TERMS.md) for exact grammar and blank-node boundaries, [CONFORMANCE.md](../packages/core/test/CONFORMANCE.md) for the portable matrix, backend versions, deadlines and ownership rules, and the [root README](../README.md) for local examples and connection schemes. File storage still requires a trusted directory and writer coordination, buffers/re-writes graphs in O(n), has no fsync guarantee, and does not migrate legacy files; see the [file README](../packages/file/README.md#known-limitations). Cursors and remote results remain buffered, not streaming or memory-bounded.
+Use the [breaking-change guide](breaking-changes.md) for migration, measured
+capabilities and recovery; [CONFORMANCE.md](../packages/core/test/CONFORMANCE.md)
+for backend versions, deadlines and ownership; and the [root README](../README.md)
+for executable examples. STRING-TERMS is superseded historical material. File
+storage requires a trusted directory and single-writer coordination, buffers and
+rewrites graphs, has no fsync guarantee, and does not migrate legacy files; see
+[file compatibility](../packages/file/README.md#storage-and-compatibility).
+Cursors and storage workflows remain buffered, not streaming or memory-bounded.
 
-Root and all five workspaces are now private experimental `0.0.0` packages. Offline safeguards test owned lock metadata, registration through public imports, side-effect declarations and rejecting publication hooks. These prevent accidents, not deliberate bypass: scripts can be disabled. No registry release, deployment or additional backend is delivered here.
+Root and all six workspaces are now private experimental `0.0.0` packages. Offline safeguards test owned lock metadata, registration through public imports, side-effect declarations and rejecting publication hooks. These prevent accidents, not deliberate bypass: scripts can be disabled. No registry release, deployment or additional backend is delivered here.
 
 ### Current verification workflow
 
@@ -21,12 +34,16 @@ npm run test:docs
 node test/verify-quickstart.js
 node test/verify-file-quickstart.js
 npm test
-node --test scripts/conformance-runner.test.js
+node --test scripts/conformance-runner.test.js scripts/documentation-contract.test.js
+node test/verify-dataset-memory.js
+node test/verify-dataset-file.js
 npm run test:conformance
 npm run test:integration --workspace=packages/sparql
 ```
 
-The aggregate executes memory/file shared compliance and disposable real Neo4j/Fuseki suites, including Neo4j's unchanged marked README examples. The standalone SPARQL command exercises its independent runner. Docker and Compose readiness are mandatory: unavailable infrastructure is failure, not a skip. Offline HTTP/native fixtures are not live backend proof. Use each run's reported runtime versions, phase outcomes and exact Compose project label to verify cleanup of containers, networks and volumes; never prune unrelated resources. Generated execution logs are evidence for that run, not source artifacts or a claim of vendor-wide compatibility.
+The aggregate executes memory/file shared compliance and public Dataset executables,
+then disposable real Neo4j/Fuseki suites, including the same independent Dataset
+fixture and Neo4j's unchanged marked README examples. The standalone SPARQL command exercises its independent runner. Docker and Compose readiness are mandatory: unavailable infrastructure is failure, not a skip. Offline HTTP/native fixtures are not live backend proof. Use each run's reported runtime versions, phase outcomes and exact Compose project label to verify cleanup of containers, networks and volumes; never prune unrelated resources. Generated execution logs are evidence for that run, not source artifacts or a claim of vendor-wide compatibility.
 
 Use the installed **Open GSD** workflow and its database-backed state tools to inspect progress and reconcile requirements at closeout. Do not register M005 again from the historical proposal, edit generated projections, or infer milestone completion from this document. Requirement reconciliation and slice/milestone acceptance remain closeout prerequisites. The [original next-session prompt](../handoff/jssgdbc-next-session-prompt.md) and earlier handoff transcripts are historical context, not current execution instructions. Later milestone proposals below remain proposals, not shipped features.
 

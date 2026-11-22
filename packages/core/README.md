@@ -1,5 +1,8 @@
 # @alt-javascript/jssgdbc-core
 
+See the [breaking-change and capability guide](../../docs/breaking-changes.md)
+for typed-term migration, explicit Dataset persistence and recovery.
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
 ## Local development
@@ -106,9 +109,9 @@ or cancellation guarantee.
 
 ## Compliance Testing
 
-**Migration boundary:** file, SPARQL and Neo4j still need typed terms, graph
-identity, Dataset hooks and capabilities migration. Their legacy tests are not
-typed conformance evidence; no failures are skipped or reclassified here.
+All four adapters implement typed Graph and explicit Dataset contracts. Run
+`npm run test:conformance` for mandatory real cross-adapter acceptance; offline
+fixtures alone are not remote conformance evidence.
 Run `npm run test:dataset-memory` for the independent-factory memory workflow.
 `datasetCompliance(client, independentDataFactory, independentDatasetFactory,
 fullDatasetFactory)` is an async destructive fixture exported from

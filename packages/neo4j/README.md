@@ -1,5 +1,8 @@
 # @alt-javascript/jssgdbc-neo4j
 
+See the [breaking-change and capability guide](../../docs/breaking-changes.md)
+for typed-term migration, explicit Dataset persistence and recovery.
+
 Neo4j storage for the jssgdbc subject/predicate/object graph API. No arbitrary
 Cypher or SPARQL execution is exposed by the public graph API.
 

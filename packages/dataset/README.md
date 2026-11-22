@@ -1,5 +1,8 @@
 # @alt-javascript/jssgdbc-dataset
 
+See the [breaking-change and capability guide](../../docs/breaking-changes.md)
+for typed-term migration, explicit Dataset persistence and recovery.
+
 Optional, buffered, synchronous **full RDF/JS Dataset** package. Core and memory have no dependency on this package. This workspace remains private and publish-guarded like the other workspaces.
 
 ```js

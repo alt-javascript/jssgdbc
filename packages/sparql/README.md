@@ -1,5 +1,8 @@
 # @alt-javascript/jssgdbc-sparql
 
+See the [breaking-change and capability guide](../../docs/breaking-changes.md)
+for typed-term migration, explicit Dataset persistence and recovery.
+
 Triple-pattern access to a SPARQL HTTP endpoint.
 
 Experimental `0.0.0`, local-workspace-only package. Private metadata and a

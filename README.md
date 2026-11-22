@@ -11,6 +11,9 @@ matching across four storage adapters. The current typed-term and explicit Datas
 [DATASET-PERSISTENCE.md](packages/core/test/DATASET-PERSISTENCE.md). Backend operational
 semantics, blank-node identity and durability are not interchangeable.
 
+See the [breaking-change and capability guide](docs/breaking-changes.md) for
+migration from strings, explicit Dataset saves and uncertain-write recovery.
+
 ## Implemented packages
 
 | Package | Purpose | Verification boundary |

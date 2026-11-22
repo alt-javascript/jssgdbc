@@ -1,5 +1,8 @@
 # @alt-javascript/jssgdbc-memory
 
+See the [breaking-change and capability guide](../../docs/breaking-changes.md)
+for typed-term migration, explicit Dataset persistence and recovery.
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
 ## Local development
@@ -64,9 +67,9 @@ explicit saves, empty replacement, preflight and partial-failure outcomes.
 Run `npm run test:memory-contract` for S01 acceptance: package safeguards, all
 core/memory/Dataset tests, the interoperability workflow, and the unchanged
 marked core/memory README examples. This is not repository-wide acceptance.
-`npm test` remains unchanged and currently exposes unmigrated root and file
-examples; file and remote adapter migrations remain later-slice work. The focused
-command does not establish that those adapters pass.
+Use `npm test` for offline repository checks and `npm run test:conformance` for
+mandatory real cross-adapter acceptance. This focused command alone does not
+establish remote adapter conformance.
 
 `loadDataset({graphs, factory})` and `saveDataset(dataset, {graphs, mode = 'merge'})`
 require explicit nonempty NamedNode/DefaultGraph selections. Replace clears empty
@@ -81,7 +84,8 @@ no transactions or cross-graph atomicity. Small/medium workloads are intended;
 1,000/10,000-quad test diagnostics are not capacity promises. Heap and synchronous
 CPU are the first scaling limits; bound inputs and await writes. No backpressure,
 timeout or cancellation is provided. A hung adapter hook also blocks close.
-File, SPARQL and Neo4j remain migration work, not typed-conformant adapters.
+File, SPARQL and Neo4j implement the typed contract with distinct persistence
+and transaction boundaries; consult the migration guide and real acceptance logs.
 
 ## Resource lifecycle
 

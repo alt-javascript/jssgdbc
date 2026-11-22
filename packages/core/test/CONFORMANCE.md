@@ -22,9 +22,23 @@ node packages/sparql/test/run-integration.js
 
 Never point the shared suite at a production dataset: default-graph clear is deliberately tested. Use the owned runners rather than invoking live test files directly.
 
+## Current typed acceptance
+
+The M005 string-term wording is **superseded** by the
+[breaking-change guide](../../../docs/breaking-changes.md),
+[typed profile](TYPED-TERMS.md) and [Dataset contract](DATASET-PERSISTENCE.md).
+All four adapters run typed Graph compliance and the independent-factory
+`datasetCompliance` fixture through public clients. The aggregate explicitly runs
+memory/file Dataset executables before the real Neo4j/Fuseki runners. Local
+Dataset edits, selected merge/replacement, unrelated graphs, lexical identity,
+blank isomorphism and immutable v1 capabilities are covered. Persistent reopen
+and backend faults have dedicated adapter tests; the shared fixture closes clients
+and uses fixed graph IRIs, so supply disposable storage only.
+
 ## Equivalence matrix
 
-All four factories acquire clients through the public DriverManager API and run `driverCompliance.js` without weakening backend assertions.
+All four factories acquire clients through the public DriverManager API and run
+typed compliance without weakening backend assertions.
 
 | Contract | Memory | File | Neo4j | SPARQL / Fuseki |
 | --- | --- | --- | --- | --- |
@@ -42,7 +56,7 @@ Neo4j also runs its unchanged node:test smoke and marked README examples, includ
 
 - Neo4j image: `neo4j:5.26.0-community`. Smoke tests report the runtime version from `dbms.components()`.
 - Apache Jena/Fuseki: official 5.4.0 archive verified with the SHA-512 in `packages/sparql/test/fixtures/Dockerfile`; runtime base `eclipse-temurin:21.0.7_6-jre-jammy`. Live setup reads `/$/server`, reports and asserts version 5.4.0. Image tags are version pins, not immutable digest pins.
-- Root sequential deadlines: memory 120s, file 120s, Neo4j 780s, Fuseki 900s (32 minutes total maximum subprocess budgets).
+- Root sequential deadlines: memory 120s, file 120s, memory Dataset 120s, file Dataset 120s, Neo4j 780s, Fuseki 900s (36 minutes total maximum subprocess budgets).
 - Neo4j: startup 300s with 240s Compose readiness; node tests 180s; Mocha 180s; teardown 60s; removal check 15s.
 - Fuseki: build/startup 600s with 180s Compose readiness; version/compliance 180s; teardown 60s; removal check 15s.
 - Shared live cases have 30s Mocha deadlines and 10s operation timeouts. Fuseki version fetch has a 5s deadline. Removal queries have 10s deadlines inside 15s subprocess budgets.
@@ -57,9 +71,17 @@ Startup, test, teardown or removal-check failure returns nonzero; the aggregate 
 
 ## Semantic and lifecycle differences
 
-See [STRING-TERMS.md](STRING-TERMS.md) for the exact term grammar. Absolute convenience IRIs and bracketed IRIs normalize together; quoted literals never become IRIs. Plain and xsd:string literals are equivalent, language tags normalize lowercase, and equivalent Unicode escape spellings normalize. Typed lexical `001` remains distinct from `1`: numeric value equality must not erase lexical identity. Literal content, language and datatype distinctions survive every operation.
+See [TYPED-TERMS.md](TYPED-TERMS.md) for the current structural RDF/JS profile.
+[STRING-TERMS.md](STRING-TERMS.md) is historical only: strings are rejected.
+Plain and xsd:string literals are equivalent, language tags normalize lowercase,
+and typed lexical `001` remains distinct from `1`. All adapters require NamedNode
+or DefaultGraph selectors; no broader local graph-string syntax is accepted.
 
-Blank-node labels are dataset/result scoped. Local support does not establish remote cross-request identity; the portable suite uses absolute IRIs instead. SPARQL named graphs use RDF IRIs while local graph names can have broader adapter-specific syntax. Neo4j stores RDF-shaped terms in its property-graph representation, not an RDF inference engine. No inference or general SPARQL query equivalence is claimed.
+Blank-node labels are import/result scoped. The shared Dataset fixture checks
+cross-graph sharing by isomorphism, not label identity across responses. SPARQL
+blank identity lookup/delete is unavailable. Neo4j stores RDF-shaped terms in its
+property-graph representation, not an RDF inference engine. No inference or
+general SPARQL query equivalence is claimed.
 
 Graph close releases a handle without deleting data; a fresh handle on an open client can read retained data. File persistence is local disk persistence, unlike the deliberately ephemeral lifetime of these backend fixtures. The suite proves handle reacquisition, not crash recovery or durable production backend configuration.
 

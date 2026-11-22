@@ -1,5 +1,8 @@
 # @alt-javascript/jssgdbc-file
 
+See the [breaking-change and capability guide](../../docs/breaking-changes.md)
+for typed-term migration, explicit Dataset persistence and recovery.
+
 Experimental `0.0.0`, local-workspace-only package. Run `npm ci` at the repository root. Private metadata and the prepublish guard prevent accidental publication, not deliberate bypass. No registry release is supported.
 
 ## Usage

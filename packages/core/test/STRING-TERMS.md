@@ -1,6 +1,8 @@
 # Lossless string-term contract (M005)
 
-This is the tested portable contract for the existing string API, not a public term-object API.
+**Superseded historical M005 contract.** The current Graph API rejects strings;
+use [typed terms](TYPED-TERMS.md) and the [breaking-change guide](../../../docs/breaking-changes.md).
+The assertions and implementation status below describe M005, not current acceptance.
 
 - Accept absolute IRI convenience strings (`urn:s`, `https://example.org/o`) and bracketed N-Triples IRIs. They identify the same RDF term. Graph result IRIs use unbracketed absolute strings; standalone file codec terms remain N-Triples surface syntax.
 - Literal objects use double-quoted N-Triples syntax, optionally followed by a language tag or `^^<absolute-datatype-IRI>`. Never infer a literal from bare text, coerce a typed lexical value to a JS value, or strip its quotes. `"urn:o"` and `urn:o` are distinct terms.
